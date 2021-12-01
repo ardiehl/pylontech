@@ -1,4 +1,10 @@
 #!/bin/bash
+# build the executables for a Victron Cerbos GX
+# the Victronenergy Venus SDK needs to be installed
+# in my case in /opt/venus/gerbosgx
+#
+GXHOSTNAME=vgx.armin.d
+GXUSER=root
 make clean
 . /opt/venus/cerbosgx/environment-setup-cortexa7hf-neon-vfpv4-ve-linux-gnueabi
-make && scp pylontech root@vgx.armin.d:/home/root && make clean
+make && scp pylontech $GXUSER@$GXHOSTNAME/data/root && make clean

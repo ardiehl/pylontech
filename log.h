@@ -14,6 +14,8 @@
 extern int log_verbosity;
 extern int log_syslog;
 
+#define verbose log_verbosity
+
 void log_setVerboseLevel (int verboseLevel);
 void log_incVerboseLevel();
 void log_setSyslogTarget (char * progName);

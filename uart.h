@@ -1,7 +1,7 @@
 #ifndef UART_H_INCLUDED
 #define UART_H_INCLUDED
 
-#define VPRINTF(vlevel,V...) if (verbose>=vlevel) printf(V)
+#//define VPRINTF(vlevel,V...) if (verbose>=vlevel) printf(V)
 #define UART_OK 0
 #define UART_ERR -1
 

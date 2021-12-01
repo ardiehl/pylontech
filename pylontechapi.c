@@ -1,4 +1,29 @@
-
+/*
+ * pylontechapi.c
+ *
+ * Copyright 2021 Armin Diehl <ad@ardiehl.de>
+ *
+ * Api for accessing Pylontech Batteries via RS485
+ * Tested with US3000C but should also work with other models
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+ * MA 02110-1301, USA.
+ *
+ * Dec 1, 2021 Armin:
+    first version
+*/
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
@@ -194,7 +219,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	res = uart_read_bytes(pyl->serFd, p,1,250);	// timeout 1/4 seconds
 	if (res == 1) {
 		if (buf[0] != 0x7e) {
-			printf("packetReceive: received invalid SOI char (0x0%x), expected 0x7e\n",buf[0]);
+			EPRINTF("packetReceive: received invalid SOI char (0x0%x), expected 0x7e\n",buf[0]);
 			uart_flush(pyl->serFd);
 			return NULL;
 		}
@@ -208,7 +233,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	// get the fix part of the packet (including the length field
 	res = uart_read_bytes(pyl->serFd, p,PKT_LEN_MIN-1,100);
 	if (res != PKT_LEN_MIN-1) {
-		printf("packetReceive: got only %d bytes but expected %d bytes\n",res,PKT_LEN_MIN-1);
+		EPRINTF("packetReceive: got only %d bytes but expected %d bytes\n",res,PKT_LEN_MIN-1);
 		uart_flush(pyl->serFd);
 		return NULL;
 	}
@@ -220,7 +245,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	chk = (((length & 0x0f000) >> 12) & 0x0f);		// extract the length checksum from the received length field
 	VPRINTF(2,"packetReceive: length field is '%s', lchk is: 0x0%x, lchkExpected: 0x0%x\n",p,chk,chkExpected);
 	if (chk != chkExpected) {
-		printf("packetReceive: invalid checksum in length field, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
+		EPRINTF("packetReceive: invalid checksum in length field, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
 		uart_flush(pyl->serFd);
 		return NULL;
 	}
@@ -230,7 +255,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	p = strend(buf);
 	res = uart_read_bytes(pyl->serFd,p,len,100);	// receive remaining @ end of string
 	if (res != len) {
-		printf("packetReceive: got only %d bytes for the second part of a packet but expected %d bytes\n",res,len);
+		EPRINTF("packetReceive: got only %d bytes for the second part of a packet but expected %d bytes\n",res,len);
 		uart_flush(pyl->serFd);
 		return NULL;
 	}
@@ -246,7 +271,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 			dumpBuffer(p,strlen(p)); printf("'\n");
 	}
 	if (chk != chkExpected) {
-		printf("packetReceive: invalid checksum, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
+		EPRINTF("packetReceive: invalid checksum, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
 		uart_flush(pyl->serFd);
 		return NULL;
 	}
@@ -308,7 +333,7 @@ int packetSend (PYL_HandleT* pyl, packetDataT * pa) {
 	len = strlen(packetStr);
 	res = uart_write_bytes(pyl->serFd, packetStr, len);
 	if (res != len) {							// something went wrong
-		printf("Error sending data, res: %d, len: %d\n",res,len);
+		EPRINTF("Error sending data, res: %d, len: %d\n",res,len);
 		free(packetStr);
 		return PYL_ERR;
 	}
@@ -354,7 +379,7 @@ packetDataT * sendCommandAndReceive (
 
 	res = packetSend (pyl,pa);
 	if (res != 0) {
-		printf("%s: packet send failed, res: %d\n",commandName(CID2),res);
+		EPRINTF("%s: packet send failed, res: %d\n",commandName(CID2),res);
 		packetFree(pa);
 		return NULL;
 	}
@@ -365,7 +390,7 @@ packetDataT * sendCommandAndReceive (
 	}
 
 	if (pa->cid2 != 0) {		// 0 means ok otherwise error code
-		printf("%s: received error code 0x%02x (%s)\n",commandName(CID2),pa->cid2,cid2ResponseTxt (pa->cid2));
+		EPRINTF("%s: received error code 0x%02x (%s)\n",commandName(CID2),pa->cid2,cid2ResponseTxt (pa->cid2));
 		packetFree(pa);
 		return NULL;
 	}
@@ -373,12 +398,12 @@ packetDataT * sendCommandAndReceive (
 	if (expectedInfoLength) {
 		if (pa->info) infoLen = strlen(pa->info);
 		if (expectedInfoLength > infoLen) {
-			printf("%s: expected to receive %d bytes of data but got only %d bytes\n",commandName(CID2),expectedInfoLength,infoLen);
+			EPRINTF("%s: expected to receive %d bytes of data but got only %d bytes\n",commandName(CID2),expectedInfoLength,infoLen);
 			packetFree(pa);
 			return NULL;
 		}
 		if (expectedInfoLength != infoLen)
-			printf("%s: Info: expected to receive %d bytes of data, got %d bytes\n",commandName(CID2),expectedInfoLength,infoLen);
+			EPRINTF("%s: Info: expected to receive %d bytes of data, got %d bytes\n",commandName(CID2),expectedInfoLength,infoLen);
 	}
 	return pa;
 }
@@ -408,23 +433,17 @@ int pyl_getAnalogData (PYL_HandleT* pyl, PYL_AnalogDataT *pd) {
 	pd->commandValue = paInfoGetInt(pa,1);
 
 	pd->cellsCount = paInfoGetInt(pa,1);
-	//printf("Cell count: %d\n",pd->cellsCount);
 
 	// get cell voltages
 	for (i=0;i<pd->cellsCount;i++) {
 		if (i < CELLS_MAX) pd->cellVoltage[i] = paInfoGetInt(pa,2);
-		//printf("%d: %dmV ",i,pd->cellVoltage[i]);
 	}
-	//printf("\n");
 
 	pd->tempCount = paInfoGetInt(pa,1);
-	//printf("Temp count: %d\n",pd->tempCount);
 	// get temperature values
 	for (i=0;i<pd->tempCount;i++) {
 		if (i < TEMPS_MAX) pd->temp[i] = (paInfoGetInt(pa,2)-2731)/10;
-		//printf("%d: %dmV ",i,pd->temp[i]);
 	}
-	//printf("\n");
 
 	pd->current = paInfoGetInt(pa,2);
 	if (pd->current >= 32768) pd->current -= 65536;
@@ -626,9 +645,6 @@ int pyl_connect(PYL_HandleT* pyl, int groupNum, char *portname) {
 		pyl->serFd = 0;
 	}
 	pyl->serFd = initSerial (portname,115200);
-	//printf("res:%d\n",res);
-
-
 	return pyl_setGroup (pyl, groupNum);
 }
 

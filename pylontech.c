@@ -16,16 +16,6 @@
 #include "pylontechapi.h"
 //#define debug
 
-
-
-
-
-#ifdef debug
-int verbose = 2;
-#else
-int verbose = 0;
-#endif
-
 #define SCAN_MAX_DEVICES 32
 #define READ_INTERVAL_SECS 2
 
@@ -337,8 +327,8 @@ int main (int argc, char **argv) {
 					if (errno) {
 						fprintf(stderr,"verbosity is not a number\n"); usage();
 					}
-					verbose = res;
-				} else verbose++;
+					log_setVerboseLevel(res);
+				} else log_incVerboseLevel();
 				break;
             case 'h': usage(); break;
             case 'd': portname = strdup(optarg); break;

@@ -5,6 +5,7 @@
 #include <unistd.h>
 #include "uart.h"
 #include <sys/select.h>
+#include "log.h"
 
 struct termios oldtio,newtio;
 

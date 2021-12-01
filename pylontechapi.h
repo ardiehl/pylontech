@@ -1,5 +1,57 @@
+/*
+ * pylontechapi.h
+ *
+ * Copyright 2021 Armin Diehl <ad@ardiehl.de>
+ *
+ * Api for accessing Pylontech Batteries via RS485
+ * Tested with US3000C but should also work with other models
+ *
+ * Usage:
+ * allocate an API handle:
+ *     PYL_HandleT* pyl;
+ *     pyl = pyl_initHandle();
+ *
+ * open the port and find number of connected modules, res or pyl->numDevicesFound conntains the number of modules:
+ *     int group = 0;
+ *     int res =  pyl_connect(pyl, group, "/dev/ttyUSB0");
+ *
+ * get the data as required, e.g. analogData
+ *     PYL_AnalogDataT ad;
+ *     res = pyl_getAnalogData(pyl,&ad);
+ *     if(res == PYL_OK) printf("Module current: %7.2f\n", (float)ad.current / PYL_MODULE_CURRENT_DIVIDER);
+ *
+ * close and free the handle
+ *     pyl_freeHandle(pyl);
+ *
+ * the Module that will be used (1=first module) for a command can be set with
+ *     pyl_setAdr(PYL_HandleT* pyl, int Adr)
+ *
+ * you can also set the group (0..15), setting the group will scan for the number of modules
+ *     int numModules = pyl_setGroup (PYL_HandleT* pyl, int groupNum);
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program; if not, write to the Free Software
+ * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+ * MA 02110-1301, USA.
+ *
+ * Dec 1, 2021 Armin:
+    first version
+*/
+
 #ifndef PYLONTECH_H_INCLUDED
 #define PYLONTECH_H_INCLUDED
+
+#include "log.h"
 
 #define PYL_DEFPORTNAME "/dev/ttyUSB1"
 #define PYL_DEFBAUDRATE 115200
