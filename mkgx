@@ -1,0 +1,4 @@
+#!/bin/bash
+make clean
+. /opt/venus/cerbosgx/environment-setup-cortexa7hf-neon-vfpv4-ve-linux-gnueabi
+make && scp pylontech root@vgx.armin.d:/home/root && make clean

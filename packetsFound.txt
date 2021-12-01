@@ -1,0 +1,50 @@
+7E 32 30 30 35 34 36 34 32 45 30 30 32 30 32 46 44 33 30 0D
+~  2  0  0  5  4  6  4  2  E  0  0  2  0  2  F  D  3  0
+
+   20 version
+   05 addr
+   4642 Get analog value (fixed-point type)
+   E002 1 byte (2 chars) info length = 02 =
+
+7E 32 30 30 32 34 36 34 32 45 30 30 32 30 32 46 44 33 33 0D
+~
+ 2  0  0  2  3  6  4  2  E  0  0  2  0  2  F  D  3  3
+
+
+
+~20054642E00202FD30
+
+GetAnalogData Info
+11
+02    ?? addr ?
+0F    = 15 cells
+0CBE  = 3262mV
+0CBF
+0CBF
+0CBF
+0CBF
+0CBF
+0CBE
+0CBE
+0CBF
+0CBE
+0CC1
+0CC0
+0CC0
+0CC0
+0CC0  = 3264 mV
+05    = 5 temp Values
+0B7C
+0B5E
+0B5E
+0B5C
+0B69
+0000  = pack current
+BF33  = pack voltage = 48.947V
+FFFF
+04FF
+FF00
+0000
+2E40
+0121
+10

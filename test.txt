@@ -1,0 +1,81 @@
+[ad@e5w pylontech]$ ./pylontech
+verbose: 2
+Serial port opened
+packetPrepareData: chk: 0xfd9a, length field: 0x0000
+uart_write_bytes: Request to write 18 bytes ~2000464F0000FD9A<0x0d>
+uart_write_bytes: res: 18
+uart_waiti: Calling select
+uart_waiti: select returned 0
+uart_read_bytes: timeout waiting for data
+packetReceive: did not receive SOI, got -1 bytes
+packetPrepareData: chk: 0xfd0b, length field: 0xe002
+uart_write_bytes: Request to write 20 bytes ~20004642E002FFFD0B<0x0d>
+uart_write_bytes: res: 20
+uart_waiti: Calling select
+uart_waiti: select returned 0
+uart_read_bytes: timeout waiting for data
+packetReceive: did not receive SOI, got -1 bytes
+packetPrepareData: chk: 0xfd99, length field: 0x0000
+uart_write_bytes: Request to write 18 bytes ~2001464F0000FD99<0x0d>
+uart_write_bytes: res: 18
+uart_waiti: Calling select
+uart_waiti: select returned 0
+uart_read_bytes: timeout waiting for data
+packetReceive: did not receive SOI, got -1 bytes
+packetPrepareData: chk: 0xfd0a, length field: 0xe002
+uart_write_bytes: Request to write 20 bytes ~20014642E002FFFD0A<0x0d>
+uart_write_bytes: res: 20
+uart_waiti: Calling select
+uart_waiti: select returned 0
+uart_read_bytes: timeout waiting for data
+packetReceive: did not receive SOI, got -1 bytes
+
+adr=2 seems to work
+===================
+packetPrepareData: chk: 0xfd98, length field: 0x0000
+uart_write_bytes: Request to write 18 bytes ~2002464F0000FD98<0x0d>
+uart_write_bytes: res: 18
+uart_waiti: Calling select
+uart_waiti: select returned 1
+uart_read_bytes: received 1 bytes
+uart_waiti: Calling select
+uart_waiti: select returned 1
+uart_read_bytes: received 12 bytes
+packetReceive: length field is '0000', lchk is: 0x00, lchkExpected: 0x00
+uart_waiti: Calling select
+uart_waiti: select returned 1
+uart_read_bytes: received 5 bytes
+packetReceive: chk is: 0x0fdb2, chkExpected: 0x0fdb2, packet: '~200246000000FDB2<0x0d>' 'FDB2<0x0d>'
+packetReceive: received packet, rtn: 0x00 
+received packet -> packet: ver: 0x20 adr: 2, cid1: 0x046, cid2: 0x00
+getProtocolVersion: got response, version is 0x20
+
+packetPrepareData: chk: 0xfd09, length field: 0xe002
+uart_write_bytes: Request to write 20 bytes ~20024642E002FFFD09<0x0d>
+uart_write_bytes: res: 20
+uart_waiti: Calling select
+uart_waiti: select returned 0
+uart_read_bytes: timeout waiting for data
+packetReceive: did not receive SOI, got -1 bytes
+packetPrepareData: chk: 0xfd97, length field: 0x0000
+uart_write_bytes: Request to write 18 bytes ~2003464F0000FD97<0x0d>
+uart_write_bytes: res: 18
+uart_waiti: Calling select
+uart_waiti: select returned 1
+uart_read_bytes: received 1 bytes
+uart_waiti: Calling select
+uart_waiti: select returned 1
+uart_read_bytes: received 12 bytes
+packetReceive: length field is '0000', lchk is: 0x00, lchkExpected: 0x00
+uart_waiti: Calling select
+uart_waiti: select returned 1
+uart_read_bytes: received 5 bytes
+packetReceive: chk is: 0x0fdb1, chkExpected: 0x0fdb1, packet: '~200346000000FDB1<0x0d>' 'FDB1<0x0d>'
+packetReceive: received packet, rtn: 0x00 
+received packet -> packet: ver: 0x20 adr: 3, cid1: 0x046, cid2: 0x00
+getProtocolVersion: got response, version is 0x20
+packetPrepareData: chk: 0xfd08, length field: 0xe002
+uart_write_bytes: Request to write 20 bytes ~20034642E002FFFD08<0x0d>
+uart_write_bytes: res: 20
+uart_waiti: Calling select
+
