@@ -1,0 +1,16 @@
+#!/bin/bash
+. functions.sh
+
+logger "here is $0"
+# syslog only does remote logging for a short period of time, let's restart it
+/etc/init.d/syslog stop
+/sbin/syslogd -R lnx.armin.d
+log "syslogd restarted"
+
+log "waiting 30 seconds for startup"
+sleep 30
+
+#### plyontech influxdb logger
+log "starting pylontech2influx"
+./start_pylon2influx &
+

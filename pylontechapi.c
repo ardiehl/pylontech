@@ -191,7 +191,7 @@ char * packetPrepareData (packetDataT *pa) {
 	chk = calc_checksum(temp,strlen(temp));
 	bufAddHex2(buf,chk);
 	strcat(buf,"\r");							// EOI 0x0d
-	VPRINTF(2,"packetPrepareData: chk: 0x%04x, length field: 0x%04x\n",chk,length);
+	VPRINTF(3,"packetPrepareData: chk: 0x%04x, length field: 0x%04x\n",chk,length);
 	strupper(buf);								// make it upper case, dont know if this is needed
 	return buf;
 }
@@ -211,15 +211,12 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 
 	memset(buf,0,RECEIVE_BUFSIZE);
 
-	// wait for the start char
-	//uart_setCharsAndTimeout (1,5*10);
-	//uart_setCharsAndTimeout (1,1);
-
 	// wait for SOI
-	res = uart_read_bytes(pyl->serFd, p,1,250);	// timeout 1/4 seconds
+	res = uart_read_bytes(pyl->serFd, p,1,500);	// timeout 1/4 seconds
 	if (res == 1) {
 		if (buf[0] != 0x7e) {
 			EPRINTF("packetReceive: received invalid SOI char (0x0%x), expected 0x7e\n",buf[0]);
+			usleep(1000 * 50);
 			uart_flush(pyl->serFd);
 			return NULL;
 		}
@@ -231,9 +228,10 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	p++;
 
 	// get the fix part of the packet (including the length field
-	res = uart_read_bytes(pyl->serFd, p,PKT_LEN_MIN-1,100);
+	res = uart_read_bytes(pyl->serFd, p,PKT_LEN_MIN-1,750);
 	if (res != PKT_LEN_MIN-1) {
 		EPRINTF("packetReceive: got only %d bytes but expected %d bytes\n",res,PKT_LEN_MIN-1);
+		usleep(1000 * 50);
 		uart_flush(pyl->serFd);
 		return NULL;
 	}
@@ -243,9 +241,10 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	length = hex2int(p,2);
 	chkExpected = calc_lchecksum (length);			// calculate the expected length checksum
 	chk = (((length & 0x0f000) >> 12) & 0x0f);		// extract the length checksum from the received length field
-	VPRINTF(2,"packetReceive: length field is '%s', lchk is: 0x0%x, lchkExpected: 0x0%x\n",p,chk,chkExpected);
+	VPRINTF(3,"packetReceive: length field is '%s', lchk is: 0x0%x, lchkExpected: 0x0%x\n",p,chk,chkExpected);
 	if (chk != chkExpected) {
 		EPRINTF("packetReceive: invalid checksum in length field, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
+		usleep(1000 * 50);
 		uart_flush(pyl->serFd);
 		return NULL;
 	}
@@ -253,9 +252,10 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	infoLen = (length & 0x0fff);					// remove checksum from length field
 	len = infoLen + 4 + 1;							// info + checksum (16 bit) + EOI(0x0d)
 	p = strend(buf);
-	res = uart_read_bytes(pyl->serFd,p,len,100);	// receive remaining @ end of string
+	res = uart_read_bytes(pyl->serFd,p,len,500);	// receive remaining @ end of string
 	if (res != len) {
 		EPRINTF("packetReceive: got only %d bytes for the second part of a packet but expected %d bytes\n",res,len);
+		usleep(1000 * 50);
 		uart_flush(pyl->serFd);
 		return NULL;
 	}
@@ -265,13 +265,14 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	// lets check the checksum we got
 	p = strend(buf)-1-4;							// extract the
 	chk = hex2int(p,2);								// received checksum
-	VPRINTF(2,"packetReceive: chk is: 0x0%x, chkExpected: 0x0%x, packet: '",chk,chkExpected);
+	VPRINTF(3,"packetReceive: chk is: 0x0%x, chkExpected: 0x0%x, packet: '",chk,chkExpected);
 	if (verbose >= 2) {
 			dumpBuffer(buf,strlen(buf)); printf("' '");
 			dumpBuffer(p,strlen(p)); printf("'\n");
 	}
 	if (chk != chkExpected) {
 		EPRINTF("packetReceive: invalid checksum, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
+		usleep(1000 * 50);
 		uart_flush(pyl->serFd);
 		return NULL;
 	}
@@ -291,7 +292,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 		pa->info = calloc(1,infoLen+1);
 		memcpy(pa->info,p,infoLen);
 	}
-	VPRINTF(2,"packetReceive: received packet, rtn: 0x%02x %s\n",pa->cid2,cid2ResponseTxt(pa->cid2));
+	VPRINTF(3,"packetReceive: received packet, rtn: 0x%02x %s\n",pa->cid2,cid2ResponseTxt(pa->cid2));
 	if (verbose > 2) {
 		printf ("received packet -> ");
 		dumpPacket(pa);
@@ -335,6 +336,7 @@ int packetSend (PYL_HandleT* pyl, packetDataT * pa) {
 	if (res != len) {							// something went wrong
 		EPRINTF("Error sending data, res: %d, len: %d\n",res,len);
 		free(packetStr);
+		uart_flush(pyl->serFd);
 		return PYL_ERR;
 	}
 	if (verbose > 2) {
@@ -413,7 +415,7 @@ int pyl_getProtocolVersion (PYL_HandleT* pyl) {
 	packetDataT * pa = sendCommandAndReceive (pyl,CID2_GetCommunicationProtocolVersion, NULL, 0);
 	if (!pa) return PYL_ERR;
 
-	VPRINTF(1,"getProtocolVersion: got response, version is 0x%02x\n",pa->ver);
+	VPRINTF(2,"getProtocolVersion: got response, version is 0x%02x\n",pa->ver);
 	pyl->protocolVersion = pa->ver;
 	packetFree(pa);
 	return PYL_OK;
@@ -477,7 +479,7 @@ int pyl_getSystemParameter (PYL_HandleT* pyl, PYL_SystemParameterT *sp) {
 
 	len = 0;
 	if (pa->info) len = strlen(pa->info);
-	VPRINTF(1,"getSystemParameter: got response, data len: %d\n",len);
+	VPRINTF(2,"getSystemParameter: got response, data len: %d\n",len);
 	if (len) {
 		paInfoSkipBytes(pa,1);
 		sp->cellHighVoltageLimit = paInfoGetInt(pa,2);
@@ -506,7 +508,7 @@ int pyl_getManufacturerInformation (PYL_HandleT* pyl, PYL_ManufacturerInformatio
 
 	len = 0;
 	if (pa->info) len = strlen(pa->info);
-	VPRINTF(1,"getManufacturerInformation: got response, data len: %d\n",len);
+	VPRINTF(2,"getManufacturerInformation: got response, data len: %d\n",len);
 	if (len) {
 		paInfoGetString(mi->deviceName,pa,10);
 		mi->softwareVersion[0] = paInfoGetInt(pa,1);
@@ -532,7 +534,7 @@ int pyl_getSerialNumber (PYL_HandleT* pyl, PYL_SerialNumberT *mi) {
 
 	len = 0;
 	if (pa->info) len = strlen(pa->info);
-	VPRINTF(1,"getSerialNumber: got response, data len: %d\n",len);
+	VPRINTF(2,"getSerialNumber: got response, data len: %d\n",len);
 	if (len) {
 		p = pa->info;		// info contains the response data in hex ascii, each field is 2 bytes = 4 hex nibbles
 		memset(mi,0,sizeof(*mi));
@@ -627,7 +629,7 @@ int pyl_setGroup (PYL_HandleT* pyl, int groupNum) {
 
 	pyl->group = groupNum;
 	pyl->numDevicesFound = 0;
-	for (i = 0; i < DEVICES_MAX; i++) {
+	for (i = 0; i < PYL_MAX_DEVICES_IN_GROUP; i++) {
 		pyl_setAdr(pyl,i+1);
 		res = pyl_getProtocolVersion (pyl);
 		if (res != PYL_OK) return pyl->numDevicesFound;

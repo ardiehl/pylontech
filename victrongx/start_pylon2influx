@@ -1,0 +1,61 @@
+#!/bin/bash
+
+#
+# pylon2influx startscript for victron energy venus (in my case a Cerbos GX)
+#
+# Armin Diehl <ad@ardiehl.de> Dec 3, 2021
+#
+############################################################################
+
+. ./functions.sh
+
+# the serial port device, we need to create a lock file for that port
+# because the serial starter script in venus will periodically test
+# for devices on available serial ports
+SERDEV=ttyUSB1
+PROG=pylon2influx
+
+# the data for the target influx database
+INFLUX_DATABASE=battery
+INFLUX_SERVER=lnx.armin.d
+INFLUX_PORT=8086
+INFLUX_USER=
+INFLUX_PASSWORD=
+# cache specifies the number of influx posts that will be queued in case
+# the influx server is not reachable
+CACHE=
+
+OPTS="--server=$INFLUX_SERVER --port=$INFLUX_PORT --db=$INFLUX_DATABASE"
+[ -z "$INFLUX_USER" ] || OPTS="$OPTS --user=$UNFLUX_USER"
+[ -z "$INFLUX_PASSWORD" ] || OPTS="$OPTS --password=$UNFLUX_PASSWORD"
+[ -z "$CACHE" ] || OPTS="$OPTS --cache=$CACHE"
+
+tryLock() {
+  while true; do
+    lock_tty $SERDEV
+    [ $? -eq 0 ] && return 0
+#    echo -n "."
+    sleep 0.5
+  done
+}
+
+unlockOnExit() {
+	unlock_tty $SERDEV
+	echo "$SERVEV unlocked"
+}
+
+log "Trying to lock $SERDEV"
+tryLock
+log "obtained a lock, starting"
+
+trap unlockOnExit EXIT
+
+while true; do
+	echo "OPTS: $OPTS"
+	log "Starting $PROG $OPTS"
+	./$PROG -y $OPTS
+	log "$PROG terminated, sleeping for a while and trying to restart"
+	sleep 30
+done
+
+

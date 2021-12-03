@@ -11,7 +11,7 @@
 #include <arpa/inet.h>
 #include <sys/uio.h>
 #include <time.h>
-#include "log.h"
+#include "../log.h"
 #include <inttypes.h>
 
 #define INFLUX_TIMEOUT_SECONDS 5
@@ -85,7 +85,7 @@ int influxdb_send_udp(influx_client_t* c, ...)
     return ret;
 }
 
-int format_line(char **buf, int *len, size_t used, ...)
+int influxdb_format_line(char **buf, int *len, size_t used, ...)
 {
     va_list ap;
     va_start(ap, used);
@@ -126,7 +126,9 @@ int appendToBuf (char **buf, size_t *used, size_t *bufLen, char *src) {
             return -1;
         }
         if (*bufLen > lastNeededBufferSize) lastNeededBufferSize = *bufLen;
+        //printf("appendToBuf, after realloc\n>'%s'<\n",*buf);
     }
+
     strcpy(*buf + *used,src);
     //printf("buf: %s\n", *buf);
     *used+=srcLen;
@@ -166,11 +168,12 @@ int _format_line2(char** buf, va_list ap, size_t *_len, size_t used)
     double d = 0.0;
     char tempStr[MAX_FIELD_LENGTH+1];
 
-
     if (*buf == NULL) {
 	    len = _begin_line(buf);
 	    used = 0;
-    }
+	} else {
+		last_type = IF_TYPE_FIELD_BOOLEAN; // ad 2.12.2021
+	}
 
     type = va_arg(ap, int);
     while(type != IF_TYPE_ARG_END) {
@@ -185,7 +188,7 @@ int _format_line2(char** buf, va_list ap, size_t *_len, size_t used)
         switch(type) {
             case IF_TYPE_MEAS:
                 if(last_type)
-                    _APPEND("\n");
+					_APPEND("\n");
                 if(last_type && last_type <= IF_TYPE_TAG)
                     goto FAIL;
                 if(_escaped_append(buf, &len, &used, va_arg(ap, char*), ", "))
@@ -233,14 +236,16 @@ int _format_line2(char** buf, va_list ap, size_t *_len, size_t used)
         last_type = type;
         type = va_arg(ap, int);
     }
-    _APPEND("\n");
+    //_APPEND("\n");  // AD: removed
+#if 0
     if(last_type <= IF_TYPE_TAG)
         goto FAIL;
+#endif
     *_len = len;
     return used;
 FAIL:
-    free(*buf);
-    *buf = NULL;
+	free(*buf);
+	*buf = NULL;
     return -1;
 }
 #undef _APPEND
@@ -480,6 +485,25 @@ int influxdb_post_http(influx_client_t* c, ...)
     }
     return ret_code;
 }
+
+// line will be free'd or added to queue if influxdb server is unavailable
+int influxdb_post_http_line(influx_client_t* c, char * line)
+{
+    int ret_code = 0, len = strlen(line);
+
+    ret_code = post_http_send_line(c, line, len);
+    //printf("rc from post_http_send_line: %d\n",ret_code);
+    if (ret_code != 0) {
+        if (addToQueue(c,line)<0) {
+            free(line);
+        }
+    } else {
+        free(line);
+        influxdb_deQueue(c);
+    }
+    return ret_code;
+}
+
 
 int send_udp_line(influx_client_t* c, char *line, int len)
 {

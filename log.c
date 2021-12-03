@@ -16,7 +16,8 @@ void log_incVerboseLevel() {
 void log_setSyslogTarget (char * progName) {
 #ifndef ESP
     if (log_syslog == 0) {
-        openlog(progName, LOG_PERROR, LOG_DAEMON);
+        //openlog(progName, LOG_PERROR, LOG_DAEMON);
+        openlog(progName, LOG_PID, LOG_DAEMON);
         log_syslog++;
     }
 #endif
@@ -26,8 +27,8 @@ void log_fprintf(FILE *stream, char *format, ...)
 {
 	va_list args;
     va_start(args, format);
-    if (log_syslog) syslog(LOG_DAEMON,format,args);
-	else fprintf(stream,format,args);
+    if (log_syslog) vsyslog(LOG_INFO,format,args);
+	else vfprintf(stream,format,args);
     va_end(args);
 }
 

@@ -5,6 +5,13 @@
 #
 GXHOSTNAME=vgx.armin.d
 GXUSER=root
+
+function c_pt() {
+	scp pylontech pylon2influx victrongx/functions.sh victrongx/lock victrongx/lsusbser victrongx/start victrongx/start_pylon2influx $GXUSER@$GXHOSTNAME:/data/home/root
+	scp victrongx/rc.local $GXUSER@$GXHOSTNAME:/data
+}
+
+
 make clean
 . /opt/venus/cerbosgx/environment-setup-cortexa7hf-neon-vfpv4-ve-linux-gnueabi
-make && scp pylontech $GXUSER@$GXHOSTNAME/data/root && make clean
+make && c_pt && make clean

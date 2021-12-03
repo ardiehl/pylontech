@@ -1,0 +1,31 @@
+#!/bin/bash
+# We need to create a lock file for the serial port device because the serial
+# starter script in venus will periodically test for devices on available
+# serial ports. This would make it impossible to communicate to the Pylon's
+# without errors
+# Use this script to obtain a lock and start a shell
+#
+. ./functions.sh
+
+SERDEV=ttyUSB1
+
+tryLock() {
+  while true; do
+    lock_tty $SERDEV
+    [ $? -eq 0 ] && return 0
+    echo -n "."
+    sleep 0.5
+  done
+}
+
+echo $(basename $BASH_SOURCE)
+exit 1
+
+echo -n "Trying to lock $SERDEV "
+tryLock
+echo "OK, is locked"
+
+echo "starting shell, ^d to leave and unlock"
+bash --rcfile /home/root/.bash_profile
+unlock_tty $SERDEV
+echo "$SERVEV unlocked"

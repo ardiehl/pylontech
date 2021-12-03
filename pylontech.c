@@ -1,4 +1,3 @@
-
 #include <stdio.h>
 #include <string.h>
 #include <fcntl.h>
@@ -6,12 +5,10 @@
 #include <unistd.h>
 #include <getopt.h>
 #include <errno.h>
-#include <stdlib.h>
-#include <readline/readline.h>
-#include <readline/history.h>
 #include "util.h"
 #include <signal.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include "uart.h"
 #include "pylontechapi.h"
 //#define debug
@@ -252,7 +249,7 @@ void showSummary() {
 			else designVoltage = 48;
 		}
 	}
-	capacityNotUsable = totalCapacity - PLY_CALC_USABLE(totalCapacity);		// wh not usable
+	capacityNotUsable = totalCapacity - PLY_CALC_USABLE(totalCapacity);		// AH not usable
 	kwh = (float)(totalCapacity-capacityNotUsable) * designVoltage / PYL_MODULE_CAPACITY_DIVIDER / 1000;
 	printf("\ntotal capacity %d AH (~ %.2f kWh, ~%.2f KWh per module)\n",(totalCapacity-capacityNotUsable)/PYL_MODULE_CAPACITY_DIVIDER, kwh, kwh / pyl_numDevices(pyl));
 	kwh = (float)(remainingCapacity-capacityNotUsable) * designVoltage / PYL_MODULE_CAPACITY_DIVIDER / 1000;
@@ -277,8 +274,6 @@ void usage(void) {
         "  -c, --charge       Show charge / discharge info\n" \
         "  -m, --manufact     Show manufacturer information\n" \
         "  -v, --verbose[=x]  increase verbose level\n"
-        "  -y, --syslog       log to syslog insead of stderr\n"
-        "  -e, --version      show version\n"
         ,PYL_DEFPORTNAME,PYL_DEFBAUDRATE);
         exit (1);
 }
@@ -334,7 +329,7 @@ int main (int argc, char **argv) {
             case 'd': portname = strdup(optarg); break;
             case 'a':
 				adr = strtol (optarg,NULL,10);
-				if ((errno) || (adr < 1) || (adr > DEVICES_MAX)) {
+				if ((errno) || (adr < 1) || (adr > PYL_MAX_DEVICES_IN_GROUP)) {
 					fprintf(stderr,"Invalid adr specified\n"); usage();
 				}
 				break;

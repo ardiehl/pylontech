@@ -22,8 +22,10 @@ void log_setSyslogTarget (char * progName);
 void log_close();
 void log_fprintf(FILE *stream, char *format, ...);
 
-#define VPRINTF(LEVEL , ...) if (log_verbosity >= LEVEL) log_fprintf(stdout, __VA_ARGS__)
-#define PRINTF(...) if (log_verbosity >= 0) log_fprintf(stdout, __VA_ARGS__)
-#define EPRINTF(...) if (log_verbosity >= 0) log_fprintf(stderr, __VA_ARGS__)
+#define VPRINTF(LEVEL, FORMAT, ...) if (log_verbosity >= LEVEL) log_fprintf(stdout, FORMAT, ##__VA_ARGS__)
+#define PRINTF(FORMAT, ...) if (log_verbosity >= 0) log_fprintf(stdout, FORMAT, ##__VA_ARGS__)
+#define EPRINTF(FORMAT, ...) if (log_verbosity >= 0) log_fprintf(stderr, FORMAT, ##__VA_ARGS__)
+//#define LOG(...) PRINTF(__VA_ARGS__)
+#define LOG VPRINTF
 
 #endif // LOG_H_INCLUDED

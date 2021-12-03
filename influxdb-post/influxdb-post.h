@@ -97,6 +97,10 @@ int influxdb_send_udp(influx_client_t* c, ...);
 //int post_http_send_line(influx_client_t *c, char *buf, int len);
 //int send_udp_line(influx_client_t* c, char *line, int len);
 
+int influxdb_format_line(char **buf, int *len , size_t used, ...);
+
+// line will be free'd or added to queue if influxdb server is unavailable
+int influxdb_post_http_line(influx_client_t* c, char * lineIn);
 
 #ifdef __cplusplus
 }

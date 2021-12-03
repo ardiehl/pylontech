@@ -65,7 +65,7 @@
 //  RS485-protocol-pylon-low-voltage-V3.3-20180821:
 //     Maximum 8/12 (please refer to product specification) batteries in one group
 //  lets use the lower 4 bit minus 2 as the first device is always @ adr 2
-#define DEVICES_MAX 14
+#define PYL_MAX_DEVICES_IN_GROUP 14
 
 
 #define PYL_CELL_VOLTAGE_DIVIDER 1000

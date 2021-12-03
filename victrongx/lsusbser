@@ -1,0 +1,18 @@
+#!/bin/sh
+
+get_property() {
+    PROP=`udevadm info --query=property --name="$1" | sed -n "s/^$2=//p"`
+}
+
+
+for i in /dev/ttyU*; do
+	echo -n $i ": "
+	get_property $i ID_MODEL_FROM_DATABASE
+	echo -n "$PROP "
+	get_property $i ID_SERIAL
+	echo "$PROP"
+	get_property $i DEVLINKS
+	[ -z "$PROP" ] || echo "  $PROP"
+	get_property $i VE_SERVICE
+	[ -z "$PROP" ] || echo "  Victron Energy Service: $PROP"
+done

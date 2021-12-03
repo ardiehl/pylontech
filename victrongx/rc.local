@@ -1,0 +1,11 @@
+#!/bin/bash
+#                              
+# this one is in /data on the victron venus
+#                              
+logger "here is /data/rc.local"              
+cd /data/home/root                           
+if [ -x start ]; then                     
+        logger "starting /root/home/start"
+        ./start &
+fi
+
