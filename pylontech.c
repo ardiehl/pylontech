@@ -26,7 +26,7 @@ void exit_handler(void) {
 
 	VPRINTF(2,"exit_handler called\n");
 
-	if(pyl)	uart_close(pyl->serFd);
+	if(pyl)	uart_close(pyl->serFd,&pyl->ti_save);
     kb_normal();
 }
 

@@ -324,11 +324,11 @@ int post_http_send_line(influx_client_t *c, char *buf, int len)
     if (iv[0].iov_base==NULL) return -2;
     sprintf((char *)iv[0].iov_base, httpHeaderFormat,
             c->db, c->usr ? "&u=" : "",c->usr ? c->usr : "", c->pwd ? "&p=" : "", c->pwd ? c->pwd : "", c->host, iv[1].iov_len);
-    LOG(2,"httpHeader initialized (%s)",(char *)iv[0].iov_base);
+    LOG(5,"httpHeader initialized (%s)",(char *)iv[0].iov_base);
 
     iv[0].iov_len = strlen((char *)iv[0].iov_base);
 
-	LOG(2, "influxdb-c::post_http: iv[1] = '%s'\n", (char *)iv[1].iov_base);
+	LOG(5, "influxdb-c::post_http: iv[1] = '%s'\n", (char *)iv[1].iov_base);
 
     if((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
         free(iv[1].iov_base);

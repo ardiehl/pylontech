@@ -22,7 +22,7 @@
 #include "pylontechapi.h"
 #include "influxdb-post/influxdb-post.h"
 
-#define VER "0.00 Armin Diehl <ad@ardiehl.de> Dec 2,2021"
+#define VER "0.01 Armin Diehl <ad@ardiehl.de> Dec 7,2021, compiled " __DATE__ " " __TIME__
 char * ME = "pylon2influx";
 
 
@@ -30,12 +30,15 @@ char * ME = "pylon2influx";
 PYL_HandleT* pyl;		// pylontech api handle
 influx_client_t *iClient;
 
-#define queryIntervalSeconds 15
+//#define queryIntervalSeconds 15
+#define QUERY_INTERVAL_SECONDS 5
 #ifdef TESTMODE
 #define sendIntervalSeconds 12
 #else
 #define sendIntervalSeconds 60*5
 #endif
+
+int queryIntervalSeconds = QUERY_INTERVAL_SECONDS;
 
 // buffer max 2 days
 #define NUM_RECS_TO_BUFFER_ON_FAILURE 2*24*60 / sendIntervalSeconds
@@ -63,22 +66,23 @@ void usage(void) {
         "  -y, --syslog       log to syslog insead of stderr\n" \
         "  -Y, --syslogtest   send a testtext to syslog and exit\n" \
         "  -e, --version      show version\n\n" \
+        "  -q, --query        query interval in seconds (%d)\n" \
+        "  -t, --try          try to connect returns 0 on success\n\n" \
         "The cache will be used in case the influxdb server is down. In\n" \
         "that case data will be send when the server is reachable again.\n"
-        ,PYL_DEFPORTNAME,PYL_DEFBAUDRATE,NUM_RECS_TO_BUFFER_ON_FAILURE);
+        ,PYL_DEFPORTNAME,PYL_DEFBAUDRATE,NUM_RECS_TO_BUFFER_ON_FAILURE,QUERY_INTERVAL_SECONDS);
         exit (1);
 }
 
 
-
+int baudrate = PYL_DEFBAUDRATE;
+char * portname = NULL;
+int group = 0;
 
 int parseArgs (int argc, char **argv) {
-	char * portname = NULL;
-	int baudrate = PYL_DEFBAUDRATE;
 	int res = 0;
 	int c;
 	int option_index = 0;
-	int group = 0;
 	char * dbName = NULL;
 	char * serverName = NULL;
 	char * userName = NULL;
@@ -86,6 +90,7 @@ int parseArgs (int argc, char **argv) {
 	int syslog = 0;
 	int port = 8086;
 	int numQueueEntries = NUM_RECS_TO_BUFFER_ON_FAILURE;
+	int try=0;
 
     static struct option long_options[] =
         {
@@ -101,11 +106,14 @@ int parseArgs (int argc, char **argv) {
                 {"port",        required_argument, 0, 'o'},
                 {"syslog",      no_argument      , 0, 'y'},
                 {"syslogtest",  no_argument      , 0, 'Y'},
+                {"version",     no_argument      , 0, 'e'},
+                {"try",         no_argument      , 0, 't'},
+                {"query",       required_argument, 0, 'q'},
 
                 {0, 0, 0, 0}
         };
 
-    while ((c = getopt_long (argc, argv, "hd:v::b:gs:n:u:p:o:yY",long_options, &option_index)) != -1) {
+    while ((c = getopt_long (argc, argv, "hd:v::b:gs:n:u:p:o:yYetq:",long_options, &option_index)) != -1) {
         switch ((char)c) {
 			case 'v':
 				if (optarg) {
@@ -120,6 +128,7 @@ int parseArgs (int argc, char **argv) {
 			case 'n': dbName = strdup(optarg); break;
 			case 'u': userName = strdup(optarg); break;
 			case 'p': password = strdup(optarg); break;
+			case 't': try++; break;
             case 'h': usage(); break;
             case 'd': portname = strdup(optarg); break;
 			case 'g':
@@ -132,6 +141,12 @@ int parseArgs (int argc, char **argv) {
 				port = strtol (optarg,NULL,10);
 				if ((errno) || (port < 0) || (port > 0xffff)) {
 					EPRINTF("Invalid port number\n"); usage();
+				}
+				break;
+			case 'q':
+				queryIntervalSeconds = strtol (optarg,NULL,10);
+				if ((errno) || (queryIntervalSeconds < 1)) {
+					EPRINTF("query interval: invalid number\n"); usage();
 				}
 				break;
             case 'b':
@@ -148,25 +163,41 @@ int parseArgs (int argc, char **argv) {
 							exit(0);
 						}
 			case '?': usage(); break;
+			case 'e':	printf("%s %s\n",ME,VER);
+						exit(1);
 		}
 	}
 
 	if (portname == NULL) portname = strdup(PYL_DEFPORTNAME);
 
+	if (try==0) {
+		if (dbName == NULL) { EPRINTF("database name not specified\n"); usage(); }
+		if (serverName == NULL) { EPRINTF("influx server name not specified\n"); usage(); }
+	}
+
 	// init pylontech api
 	pyl = pyl_initHandle();
 	res =  pyl_connect(pyl, group, portname);
-	if (res < 0) { EPRINTF("error opening serial port %s\n",portname); return 1; }
-	if (res < 1) { EPRINTF("no pylontech devices found on %s\n",portname); return 2; }
+	if (res < 0) {
+		EPRINTF("error opening serial port %s\n",portname);
+		exit (1);
+	}
+	if (res < 1) {
+		/*if (try==0)*/ EPRINTF("no pylontech devices found on %s\n",portname);
+		pyl_freeHandle(pyl);
+		exit(2);
+	}
+
+	if (try) {
+		pyl_freeHandle(pyl);
+		exit(0);
+	}
 
 	// set device for commands below
 	//pyl_setAdr(pyl,adr);
 	if (syslog) log_setSyslogTarget(ME);
 
 	PRINTF("%d devices found in group %d\n\n",pyl_numDevices(pyl),group);
-
-	if (dbName == NULL) { EPRINTF("database name not specified\n"); usage(); }
-	if (serverName == NULL) { EPRINTF("influx server name not specified\n"); usage(); }
 
 	iClient = influxdb_post_init (serverName, port, dbName, userName, password, numQueueEntries);
 
@@ -294,6 +325,8 @@ int errs_http;
 int errs_pylon;
 int http_sendCount;
 
+volatile sig_atomic_t mainloopDone = 0;
+
 void mainloop() {
 	PYL_AnalogDataT ad[PYL_MAX_DEVICES_IN_GROUP];
 	PYL_AnalogDataT adSent[PYL_MAX_DEVICES_IN_GROUP];
@@ -301,13 +334,14 @@ void mainloop() {
 	int numDvices = pyl_numDevices(pyl);
 	memset(&ad,0,sizeof(ad)); memset(&adSent,0,sizeof(adSent));
 
-	LOG(0,"mainloop started");
+	LOG(0,"mainloop started (%s %s)",ME,VER);
 
-	while(1) {
+	while(mainloopDone == 0) {
 		timestamp = influxdb_getTimestamp();
 		entriesAdded = 0;
 		for (deviceNo=0;deviceNo<numDvices;deviceNo++) {
 			pyl_setAdr(pyl,deviceNo+1);							// set target device
+			//if (deviceNo > 0) usleep(1000 * 50);				// 50ms delay between queries
 			rc = pyl_getAnalogData(pyl,&ad[deviceNo]);			// and get analog values
 			if (rc == PYL_OK) {
 				ad[deviceNo].infoflag = 0;
@@ -317,12 +351,13 @@ void mainloop() {
 					if (influxBuf == NULL) {
 						LOG(0,"appendAnalogData failed for device %d, entriesAdded: %d\n",deviceNo,entriesAdded);
 						break;
-
 					} else entriesAdded++;
 				}
 			} else {
 				LOG(0,"getAnalogData for Module %d returned %d\n",deviceNo+1,rc);
 				errs_pylon++;
+				//log_setVerboseLevel(5);
+#if 0
 				memset(&ad[deviceNo],0,sizeof(PYL_AnalogDataT));  // write one empty record
 				if (analogDataChanged (&ad[deviceNo],&adSent[deviceNo])) {
 					appendAnalogData(deviceNo+1,&ad[deviceNo]);
@@ -332,6 +367,7 @@ void mainloop() {
 
 					} else entriesAdded++;
 				}
+#endif
 			}
 		}
 		if (entriesAdded) {
@@ -355,18 +391,32 @@ void sighup_handler(int signum) {
 	LOG(0,"Influxdb packets send: %d, http send errors: %d, pylontech query errors: %d",http_sendCount,errs_http,errs_pylon);
 }
 
+
+
 void exit_handler(void) {
     LOG(2,"exit_handler called\n");
 
 	if(pyl)	pyl_freeHandle(pyl);
 	sighup_handler(0);
 	LOG(0,"terminated");
+	mainloopDone++;
 }
 
 
 void sigterm_handler(int signum) {
 	LOG(2,"sigterm_handler called\n");
-	exit_handler();
+	mainloopDone++;
+}
+
+
+void sigusr1_handler(int signum) {
+	log_verbosity++;
+	printf("verbose: %d\n",log_verbosity);
+}
+
+void sigusr2_handler(int signum) {
+	if (log_verbosity) log_verbosity--;
+	printf("verbose: %d\n",log_verbosity);
 }
 
 
@@ -379,6 +429,8 @@ int main (int argc, char **argv) {
 	atexit(exit_handler);
 	signal(SIGTERM, sigterm_handler);
 	signal(SIGHUP, sighup_handler);
+	signal(SIGUSR1, sigusr2_handler);
+	signal(SIGUSR2, sigusr1_handler);
 
 	mainloop();
 }

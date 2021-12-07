@@ -51,6 +51,7 @@
 #ifndef PYLONTECH_H_INCLUDED
 #define PYLONTECH_H_INCLUDED
 
+#include <termios.h>
 #include "log.h"
 
 #define PYL_DEFPORTNAME "/dev/ttyUSB1"
@@ -85,11 +86,15 @@
 
 
 typedef struct {
+	struct termios ti_save;		// this termios will be restored on exit
+	struct termios ti;			// this is our new termios, store it here to check termios will be restored on exit
+	char * portname;			// need to be free'ed
 	int adr;					// current device address, first device is 1 here
 	int group;					// max 12 devices in one group, upper 4 bit of adr are group id, lower 4 are adr+1
 	int serFd;					// fileno for serial port i/o
 	int protocolVersion;
 	int numDevicesFound;
+	int initialized;			// 1 after initialization (modules scanned)
 } PYL_HandleT;
 
 typedef struct {
@@ -163,6 +168,10 @@ void pyl_freeHandle(PYL_HandleT* pyl);
 
 // sets the group and scans for devices in group, returns number of devices found
 int pyl_setGroup (PYL_HandleT* pyl, int groupNum);
+
+// closes the serial port, e.g. in case of errors. It will be reopened automatically on request
+void pyl_closeSerialPort(PYL_HandleT* pyl);
+int pyl_openSerialPort(PYL_HandleT* pyl);
 
 // open the serial port and query the number of devices, first device is at group num +2, first group is 0
 // returns -1 on failure opening the serial port or the number of devices found

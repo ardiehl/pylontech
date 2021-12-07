@@ -33,6 +33,7 @@
 #include "util.h"
 #include "uart.h"
 #include "pylontechapi.h"
+#include "termios_helper.h"
 //#define debug
 
 #define CID2_GetAnalogValue 0x42
@@ -65,6 +66,24 @@ const char * cid2ResponseTxt (int cid2) {
 	}
 	return "unknown error";
 }
+
+const char *commandName(int command) {
+	switch (command) {
+		case CID2_GetAnalogValue							: return "GetAnalogValue";
+		case CID2_GetAlarmData								: return "GetAlarmData";
+		case CID2_GetSystemParameter						: return "GetSystemParameter";
+		case CID2_GetCommunicationProtocolVersion			: return "GetCommunicationProtocolVersion";
+		case CID2_GetManufacturerInformation				: return "GetManufacturerInformation";
+		case CID2_GetChargeDischargeManagementInformation	: return "GetChargeDischargeManagementInformation";
+		case CID2_GetSerialNumberOfEquipment				: return "GetSerialNumberOfEquipment";
+		case CID2_SetChargeDischargeManagementInformation	: return "SetChargeDischargeManagementInformation";
+		case CID2_TurnOff									: return "TurnOff";
+		case CID2_GetFirmwareInfo							: return "GetFirmwareInfo";
+	}
+	return emptyString;
+}
+
+
 
 #if 0
 void printBin(int bits, int data) {
@@ -131,7 +150,7 @@ void dumpPacket (packetDataT * pa) {
 	if (pa->info) {
 		printf(" info: '");
 		dumpBuffer(pa->info,strlen(pa->info));
-		printf("'\n");
+		//printf("'\n");
 	}
 	printf("\n");
 }
@@ -178,7 +197,8 @@ char * packetPrepareData (packetDataT *pa) {
 	buf = malloc(len+1);
 	if (buf == NULL) return buf;
 	strcpy(buf,"~");			// SOI
-	bufAddHex1(buf,pa->ver);		// VER
+	if (pa->cid2 == CID2_GetCommunicationProtocolVersion) bufAddHex1(buf,0);
+	else bufAddHex1(buf,pa->ver);		// VER
 	bufAddHex1(buf,pa->adr);
 	bufAddHex1(buf,pa->cid1);
 	bufAddHex1(buf,pa->cid2);
@@ -191,7 +211,7 @@ char * packetPrepareData (packetDataT *pa) {
 	chk = calc_checksum(temp,strlen(temp));
 	bufAddHex2(buf,chk);
 	strcat(buf,"\r");							// EOI 0x0d
-	VPRINTF(3,"packetPrepareData: chk: 0x%04x, length field: 0x%04x\n",chk,length);
+	VPRINTF(2,"packetPrepareData: CID2: %d (%s) chk: 0x%04x, length field: 0x%04x\n",pa->cid2,commandName(pa->cid2),chk,length);
 	strupper(buf);								// make it upper case, dont know if this is needed
 	return buf;
 }
@@ -202,35 +222,55 @@ char * packetPrepareData (packetDataT *pa) {
 // min len incl. length field
 #define PKT_LEN_MIN (1+(6*2))
 
+#ifdef USE_SELECT
+#define UART_READ(PYL,...) uart_read_bytes(PYL->serFd, __VA_ARGS__)
+#else
+#define UART_READ(PYL,...) uart_read_bytes(PYL->serFd,&PYL->ti, __VA_ARGS__)
+#endif // USE_SELECT
 
 packetDataT * packetReceive (PYL_HandleT* pyl) {
 	char buf[RECEIVE_BUFSIZE];
 	char *p = &buf[0];
-	int res,length,chk,chkExpected,len,infoLen;
+	int res2, res,length,chk,chkExpected,len,infoLen;
 	packetDataT *pa;
+	char EOI_buf[4];
+	int maxInvalidSOI = 10;
 
 	memset(buf,0,RECEIVE_BUFSIZE);
 
 	// wait for SOI
-	res = uart_read_bytes(pyl->serFd, p,1,500);	// timeout 1/4 seconds
-	if (res == 1) {
-		if (buf[0] != 0x7e) {
-			EPRINTF("packetReceive: received invalid SOI char (0x0%x), expected 0x7e\n",buf[0]);
-			usleep(1000 * 50);
+	int SOI=0;
+	while  (SOI == 0) {
+		res = UART_READ(pyl,p,1,18);
+		if (res == 1) {
+			if (buf[0] != 0x7e) {
+				if (pyl->initialized) LOG(0,"packetReceive: received invalid SOI char (0x0%x)[%c], expected 0x7e\n",buf[0],buf[0]>' '?buf[0]:' ');
+				usleep(1000 * 50);
+				uart_flush(pyl->serFd);
+				maxInvalidSOI--;
+				if(maxInvalidSOI==0) return NULL;
+			} else {
+				SOI++;
+			}
+		} else {
 			uart_flush(pyl->serFd);
+			if (pyl->initialized) {
+				// send a few 0x0d in case some of the pylontech's are waiting for EOI
+				memset(&EOI_buf,0x0d,sizeof(EOI_buf));
+				res = uart_write_bytes(pyl->serFd,EOI_buf,sizeof(EOI_buf));	// uart_write_bytes waits until all chars are transmitted
+				res2 = uart_waiti(pyl->serFd,50);
+				LOG(0,"packetReceive: got no response, send %d 0x0d, checking for available data returned %d\n",res,res2);
+			}
+
 			return NULL;
 		}
-	} else {
-		VPRINTF(1,"packetReceive: did not receive SOI, got %d bytes\n",res);
-		uart_flush(pyl->serFd);
-		return NULL;
 	}
 	p++;
 
 	// get the fix part of the packet (including the length field
-	res = uart_read_bytes(pyl->serFd, p,PKT_LEN_MIN-1,750);
+	res = UART_READ(pyl, p,PKT_LEN_MIN-1,50);
 	if (res != PKT_LEN_MIN-1) {
-		EPRINTF("packetReceive: got only %d bytes but expected %d bytes\n",res,PKT_LEN_MIN-1);
+		LOG(0,"packetReceive: got only %d bytes but expected %d bytes\n",res,PKT_LEN_MIN-1);
 		usleep(1000 * 50);
 		uart_flush(pyl->serFd);
 		return NULL;
@@ -243,7 +283,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	chk = (((length & 0x0f000) >> 12) & 0x0f);		// extract the length checksum from the received length field
 	VPRINTF(3,"packetReceive: length field is '%s', lchk is: 0x0%x, lchkExpected: 0x0%x\n",p,chk,chkExpected);
 	if (chk != chkExpected) {
-		EPRINTF("packetReceive: invalid checksum in length field, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
+		LOG(0,"packetReceive: invalid checksum in length field, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
 		usleep(1000 * 50);
 		uart_flush(pyl->serFd);
 		return NULL;
@@ -252,9 +292,9 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	infoLen = (length & 0x0fff);					// remove checksum from length field
 	len = infoLen + 4 + 1;							// info + checksum (16 bit) + EOI(0x0d)
 	p = strend(buf);
-	res = uart_read_bytes(pyl->serFd,p,len,500);	// receive remaining @ end of string
+	res = UART_READ(pyl,p,len,50);					// receive remaining @ end of string
 	if (res != len) {
-		EPRINTF("packetReceive: got only %d bytes for the second part of a packet but expected %d bytes\n",res,len);
+		LOG(0,"packetReceive: got only %d bytes for the second part of a packet but expected %d bytes\n",res,len);
 		usleep(1000 * 50);
 		uart_flush(pyl->serFd);
 		return NULL;
@@ -271,7 +311,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 			dumpBuffer(p,strlen(p)); printf("'\n");
 	}
 	if (chk != chkExpected) {
-		EPRINTF("packetReceive: invalid checksum, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
+		LOG(0,"packetReceive: invalid checksum, got 0x0%x, expected 0x0%x\n",chk,chkExpected);
 		usleep(1000 * 50);
 		uart_flush(pyl->serFd);
 		return NULL;
@@ -334,7 +374,7 @@ int packetSend (PYL_HandleT* pyl, packetDataT * pa) {
 	len = strlen(packetStr);
 	res = uart_write_bytes(pyl->serFd, packetStr, len);
 	if (res != len) {							// something went wrong
-		EPRINTF("Error sending data, res: %d, len: %d\n",res,len);
+		LOG(0,"Error sending data, res: %d, len: %d\n",res,len);
 		free(packetStr);
 		uart_flush(pyl->serFd);
 		return PYL_ERR;
@@ -348,24 +388,8 @@ int packetSend (PYL_HandleT* pyl, packetDataT * pa) {
 }
 
 
-const char *commandName(int command) {
-	switch (command) {
-		case CID2_GetAnalogValue							: return "GetAnalogValue";
-		case CID2_GetAlarmData								: return "GetAlarmData";
-		case CID2_GetSystemParameter						: return "GetSystemParameter";
-		case CID2_GetCommunicationProtocolVersion			: return "GetCommunicationProtocolVersion";
-		case CID2_GetManufacturerInformation				: return "GetManufacturerInformation";
-		case CID2_GetChargeDischargeManagementInformation	: return "GetChargeDischargeManagementInformation";
-		case CID2_GetSerialNumberOfEquipment				: return "GetSerialNumberOfEquipment";
-		case CID2_SetChargeDischargeManagementInformation	: return "SetChargeDischargeManagementInformation";
-		case CID2_TurnOff									: return "TurnOff";
-		case CID2_GetFirmwareInfo							: return "GetFirmwareInfo";
-	}
-	return emptyString;
-}
-
-
-packetDataT * sendCommandAndReceive (
+#define TERMIOS_BUFLEN 512
+packetDataT * sendCommandAndReceive2 (
 				PYL_HandleT* pyl,
 				int CID2,
 				char * dataHexAscii,
@@ -374,14 +398,34 @@ packetDataT * sendCommandAndReceive (
 	int res;
 	int infoLen = 0;
 	packetDataT * pa = packetAllocate(pyl, LI_BAT_DATA, CID2);
+	char *p;
 
-
+	if (pyl == NULL) return NULL;
 	if (!pa) return NULL;
+	if (pyl->serFd <= 0) return NULL;
 	pa->info = dataHexAscii;
 
+	// on my Cerbos GX some program / service is accessing the serial port even if there is a lock file present
+	// check if we have the correct serial settings
+	struct termios ti;
+	tcgetattr(pyl->serFd,&ti); 					// get current port settings
+	if ( (ti.c_cflag!=pyl->ti.c_cflag) ||		// flags different than expected ?
+		 (ti.c_iflag!=pyl->ti.c_iflag) ||
+		 (ti.c_oflag!=pyl->ti.c_oflag) ) {
+		p = malloc(TERMIOS_BUFLEN);
+		if (p) {
+			decode_termios (&ti, p, TERMIOS_BUFLEN);
+			LOG(0,"Settings for %s altered externally\n",pyl->portname);
+			LOG(0,"Current settings: %s\n",p);
+			decode_termios (&pyl->ti, p, TERMIOS_BUFLEN);
+			LOG(0,"Resetting to expected settings: %s\n",p);
+		}
+		free(p);
+		tcsetattr(pyl->serFd,TCSANOW,&pyl->ti);
+	}
 	res = packetSend (pyl,pa);
 	if (res != 0) {
-		EPRINTF("%s: packet send failed, res: %d\n",commandName(CID2),res);
+		LOG(0,"%s: packet send failed, res: %d\n",commandName(CID2),res);
 		packetFree(pa);
 		return NULL;
 	}
@@ -392,7 +436,7 @@ packetDataT * sendCommandAndReceive (
 	}
 
 	if (pa->cid2 != 0) {		// 0 means ok otherwise error code
-		EPRINTF("%s: received error code 0x%02x (%s)\n",commandName(CID2),pa->cid2,cid2ResponseTxt (pa->cid2));
+		LOG(0,"%s: received error code 0x%02x (%s)\n",commandName(CID2),pa->cid2,cid2ResponseTxt (pa->cid2));
 		packetFree(pa);
 		return NULL;
 	}
@@ -400,14 +444,44 @@ packetDataT * sendCommandAndReceive (
 	if (expectedInfoLength) {
 		if (pa->info) infoLen = strlen(pa->info);
 		if (expectedInfoLength > infoLen) {
-			EPRINTF("%s: expected to receive %d bytes of data but got only %d bytes\n",commandName(CID2),expectedInfoLength,infoLen);
+			LOG(0,"%s: expected to receive %d bytes of data but got only %d bytes\n",commandName(CID2),expectedInfoLength,infoLen);
 			packetFree(pa);
 			return NULL;
 		}
 		if (expectedInfoLength != infoLen)
-			EPRINTF("%s: Info: expected to receive %d bytes of data, got %d bytes\n",commandName(CID2),expectedInfoLength,infoLen);
+			LOG(0,"%s: Info: expected to receive %d bytes of data, got %d bytes\n",commandName(CID2),expectedInfoLength,infoLen);
 	}
 	return pa;
+}
+
+#define RETRY_COUNT 2
+// in case of error, close port, wait, reopen and try again once
+packetDataT * sendCommandAndReceive (
+				PYL_HandleT* pyl,
+				int CID2,
+				char * dataHexAscii,
+				int expectedInfoLength) {
+	packetDataT * pd;
+	int rc;
+	int retry = RETRY_COUNT;
+
+	while (retry) {
+		pd = sendCommandAndReceive2 (pyl,CID2,dataHexAscii,expectedInfoLength);
+		//if (pd==NULL) printf("sendCommandAndReceive2 failed, initialized: %d\n",pyl->initialized);
+		if ((pd==NULL) && (pyl->initialized)) {
+			LOG(0,"sendCommandAndReceive: Closing and reopening %s due to communication errors\n",pyl->portname);
+			pyl_closeSerialPort(pyl);
+			usleep(1000*500);
+			rc = pyl_openSerialPort(pyl);
+			if (rc != 0) {
+				LOG(0,"sendCommandAndReceive: failed to reopen %s after failure\n",pyl->portname);
+				return pd;
+			}
+		}
+		if (pd) return pd;
+		retry--;
+	}
+	return NULL;
 }
 
 
@@ -612,10 +686,8 @@ PYL_HandleT* pyl_initHandle() {
 // free api handle and close serial port if open
 void pyl_freeHandle(PYL_HandleT* pyl) {
 	if(pyl) {
-		if (pyl->serFd) {
-			uart_close(pyl->serFd);
-			pyl->serFd = 0;
-		}
+		pyl_closeSerialPort(pyl);
+		if (pyl->portname) free(pyl->portname);
 		free(pyl);
 	}
 }
@@ -632,22 +704,48 @@ int pyl_setGroup (PYL_HandleT* pyl, int groupNum) {
 	for (i = 0; i < PYL_MAX_DEVICES_IN_GROUP; i++) {
 		pyl_setAdr(pyl,i+1);
 		res = pyl_getProtocolVersion (pyl);
-		if (res != PYL_OK) return pyl->numDevicesFound;
+		if (res != PYL_OK) break;
 		pyl->numDevicesFound++;
 	}
+	if (pyl->numDevicesFound) pyl->initialized=1;
+	//printf("pyl_setGroup: group: %d, numDevicesFound: %d, initialized: %d\n",groupNum,pyl->numDevicesFound,pyl->initialized);
 	return pyl->numDevicesFound;
+}
+
+
+// closes the serial port, e.g. in case of errors. It will be reopened automatically on request
+void pyl_closeSerialPort(PYL_HandleT* pyl) {
+	if (!pyl) return;
+	if (pyl->serFd) {
+		uart_close(pyl->serFd,&pyl->ti_save);
+		pyl->serFd = 0;
+	}
+}
+
+
+int pyl_openSerialPort(PYL_HandleT* pyl) {
+	if (pyl->serFd) {
+		uart_close(pyl->serFd,&pyl->ti_save);
+		pyl->serFd = 0;
+	}
+
+	pyl->serFd = initSerial (pyl->portname,115200,&pyl->ti_save,&pyl->ti);
+	if (pyl->serFd <= 0) {
+		pyl->serFd = 0;
+		return PYL_ERR;
+	}
+	return PYL_OK;
 }
 
 // open the serial port and query the number of devices, first device is at group num +2, first group is 0
 // returns -1 on failure opening the serial port or the number of devices found
 int pyl_connect(PYL_HandleT* pyl, int groupNum, char *portname) {
 	if (!pyl) return -1;
-	if (pyl->serFd) {
-		uart_close(pyl->serFd);
-		pyl->serFd = 0;
-	}
-	pyl->serFd = initSerial (portname,115200);
-	return pyl_setGroup (pyl, groupNum);
+	pyl->portname = strdup(portname);
+
+	int rc = pyl_openSerialPort(pyl);
+	if (rc == PYL_OK) rc = pyl_setGroup (pyl, groupNum);
+	return rc;
 }
 
 

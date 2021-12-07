@@ -38,6 +38,10 @@
 			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="pylontechapi.h" />
+		<Unit filename="termios_helper.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="termios_helper.h" />
 		<Unit filename="uart.c">
 			<Option compilerVar="CC" />
 		</Unit>
