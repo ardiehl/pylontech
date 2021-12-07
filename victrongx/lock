@@ -8,6 +8,18 @@
 . ./functions.sh
 
 SERDEV=ttyUSB1
+if [ "$1." != "." ]; then
+	SERDEV=$1
+	shift
+fi
+
+PROG="bash --rcfile /home/root/.bash_profile"
+
+if [ "$1." != "." ]; then
+	PROG="$*"
+fi
+
+echo "Lock: $SERDEV, PROG: $PROG"
 
 tryLock() {
   while true; do
@@ -18,14 +30,13 @@ tryLock() {
   done
 }
 
-echo $(basename $BASH_SOURCE)
-exit 1
-
 echo -n "Trying to lock $SERDEV "
 tryLock
 echo "OK, is locked"
 
-echo "starting shell, ^d to leave and unlock"
-bash --rcfile /home/root/.bash_profile
+
+
+echo "starting $PROG"
+$PROG
 unlock_tty $SERDEV
 echo "$SERVEV unlocked"

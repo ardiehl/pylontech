@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# for Victronenergy Cerbos GX
+# find available serial ports, detect the program to start and start it
+#
+# Armin Diehl <ad@ardiehl.de> Dec 7, 2021
+#
+############################################################################
+
+. functions.sh
+
+LOCKTIMEOUT=100
+
+checkReserved() {
+	local PROP
+	PROP=`udevadm info --query=property --name="/dev/$1" | sed -n "s/^VE_SERVICE=//p"`
+	[ "$PROP." == "vedirect." ] && return 0
+	[ "$PROP." == "vedirect:default." ] && return 0
+	[ "$PROP." == "mkx." ] && return 0
+	return 1
+}
+
+
+tryLock() {
+  local TMO=$LOCKTIMEOUT
+  while true; do
+    lock_tty $1
+    [ $? -eq 0 ] && return 0
+    echo -n "."
+    sleep 0.4
+    let "TMO=TMO-1"
+    [ $TMO == 0 ] && return 1
+  done
+}
+
+SERDEVS=$(ls /dev/ttyU* | tr "\n" " ")
+SERDEVS=$(echo $SERDEVS | sed "s/\/dev\///g")
+if [ -z "$SERDEVS" ]; then
+	log "no serial ports found, giving up"
+	exit 1
+fi
+#echo "SERDEVS: >$SERDEVS<"
+TEMP=$SERDEVS
+for P in $TEMP; do
+	if checkReserved $P; then
+		logho "Port $P is reserved, removing"
+		SERDEVS=$(echo $SERDEVS | sed "s/$P//g")
+		echo "$SERSEVS"
+	fi
+done
+
+echo "available ports: >$SERDEVS<"
+if [ -z "$SERDEVS" ]; then
+	log "no serial ports available, giving up"
+	exit 1
+fi
+
+# find the serial port for pylontech
+TEMP=$SERDEVS
+STARTED=0
+if ! findpid "./pylon2influx"; then
+	for P in $TEMP; do
+		log "Trying to obtain a lock for $P"
+		if tryLock $P; then
+			if [ $STARTED == 0 ]; then
+				log "$P locked, trying to detect pylontech battery"
+				./pylon2influx -y --try -d /dev/$P
+				RES=$?
+				if [ $RES -ne 0 ]; then
+					./pylon2influx -y --try -d /dev/$P
+					RES==$?
+				fi
+				if [ $RES == 0 ]; then
+					log "starting ./start_pylon2influx on /dev/$P"
+					SERDEVS=$(echo $SERDEVS | sed "s/$P//g")
+					./start_pylon2influx /dev/$P &
+					STARTED=1
+				fi
+				unlock_tty $P
+				log "$P unlocked"
+			fi
+		else
+			log "unable to get lock for $P, removing from available ports"
+			SERDEVS=$(echo $SERDEVS | sed "s/$P//g")
+		fi
+	done
+else
+	log "pylin2influx already running"
+fi
+
+log "remaining ports: $SERDEVS"
+

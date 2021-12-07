@@ -11,6 +11,6 @@ log "waiting 30 seconds for startup"
 sleep 30
 
 #### plyontech influxdb logger
-log "starting pylontech2influx"
-./start_pylon2influx &
+log "starting serstart"
+./serstart &
 
