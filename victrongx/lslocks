@@ -1,0 +1,26 @@
+#!/bin/bash
+
+pushd /dev 2>&1 >/dev/null
+for i in ttyUSB*; do
+        echo -n $i
+	if [ -L /var/lock/serial-starter/$i ]; then
+        	PID=`readlink /var/lock/serial-starter/$i` 
+	        echo -n ": PID:$PID "
+        	if [ ! -d /proc/$PID ]; then
+                	echo "no process for that pid"
+	                if [ "$1." == "-r." ]; then
+        	                echo -n "removing stale lock file"
+                	        rm -f /var/lock/serial-starter/$i
+                        	echo ""
+	                fi
+        	else
+                	EXE=$(readlink -f /proc/$PID/exe)
+	                echo -n "$EXE "
+        	        [ -f /proc/$PID/cmdline ] && CMD=$(cat /proc/$PID/cmdline | tr -d '\000')
+                	echo $CMD
+	        fi
+	else
+		echo " not locked"
+	fi
+done
+popd 2>&1 >/dev/null
