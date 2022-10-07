@@ -1,3 +1,11 @@
+/*
+ * AD 11 Dec 2021:
+ *   added influxdb v2 support
+ *   fixed connect to ipv6 target
+ * AD 4 Oct 2022:
+ *   try to connect to all addresses on fails
+ *
+ */
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
@@ -42,7 +50,7 @@ int send_udp_line(influx_client_t* c, char *line, int len);
 int _format_line2(char** buf, va_list ap, size_t *_len, size_t used);
 int _escaped_append(char** dest, size_t* len, size_t* used, const char* src, const char* escape_seq);
 
-influx_client_t* influxdb_post_init (char* host, int port, char* db, char* user, char* pwd, int numQueueEntries) {
+influx_client_t* influxdb_post_init (char* host, int port, char* db, char* user, char* pwd, char * org, char *bucket, char *token, int numQueueEntries) {
     influx_client_t* i;
 
     i=malloc(sizeof(influx_client_t));
@@ -54,6 +62,9 @@ influx_client_t* influxdb_post_init (char* host, int port, char* db, char* user,
     i->db=db;
     i->usr=user;
     i->pwd=pwd;
+    i->org=org;
+    i->bucket=bucket;
+    i->token=token;
     i->maxNumEntriesToQueue=numQueueEntries;
     return i;
 }
@@ -66,6 +77,22 @@ void influxdb_post_deInit(influx_client_t *c) {
      }
      c->hostResolved=0;
 }
+
+
+void influxdb_post_free(influx_client_t *c) {
+	if (c) {
+		influxdb_post_deInit(c);
+		free(c->host);
+		free(c->db);
+		free(c->usr);
+		free(c->pwd);
+		free(c->org);
+		free(c->bucket);
+		free(c->token);
+		free(c);
+	}
+}
+
 
 int influxdb_send_udp(influx_client_t* c, ...)
 {
@@ -137,6 +164,8 @@ int appendToBuf (char **buf, size_t *used, size_t *bufLen, char *src) {
 
 #define MAX_FIELD_LENGTH 255
 
+int last_type;
+
 int _format_line2(char** buf, va_list ap, size_t *_len, size_t used)
 {
 #if 0
@@ -163,7 +192,7 @@ int _format_line2(char** buf, va_list ap, size_t *_len, size_t used)
 
 
     size_t len = *_len;
-    int type = 0, last_type = 0;
+    int type = 0;
     uint64_t i = 0;
     double d = 0.0;
     char tempStr[MAX_FIELD_LENGTH+1];
@@ -171,8 +200,9 @@ int _format_line2(char** buf, va_list ap, size_t *_len, size_t used)
     if (*buf == NULL) {
 	    len = _begin_line(buf);
 	    used = 0;
-	} else {
-		last_type = IF_TYPE_FIELD_BOOLEAN; // ad 2.12.2021
+	    last_type = 0;
+//	} else {
+//		last_type = IF_TYPE_FIELD_BOOLEAN; // ad 2.12.2021
 	}
 
     type = va_arg(ap, int);
@@ -227,7 +257,7 @@ int _format_line2(char** buf, va_list ap, size_t *_len, size_t used)
                 if(last_type < IF_TYPE_FIELD_STRING || last_type > IF_TYPE_FIELD_BOOLEAN)
                     goto FAIL;
                 i = influxdb_getTimestamp();
-                //LOG(0,"xxxxx %" PRId64,i);
+                //LOGN(0,"xxxxx %" PRId64,i);
                 _APPEND(" %" PRId64, i);
                 break;
             default:
@@ -277,17 +307,17 @@ int _escaped_append(char** dest, size_t* len, size_t* used, const char* src, con
 
 int resolvHostname (influx_client_t *c) {
     int res;
-    char service[10];
+    char service[30];
 
-    sprintf(service,"%d",c->port);
+    sprintf(&service[0],"%d",c->port);
     if (c->ainfo) {
         freeaddrinfo(c->ainfo);
         c->ainfo=NULL;
     }
     c->hostResolved=0;
-    res = getaddrinfo(c->host, service, NULL /*&hints*/, &c->ainfo);
+    res = getaddrinfo(c->host, &service, NULL /*&hints*/, &c->ainfo);
     if (res != 0) {
-        LOG(0,"unable to resolve host %s:%s",c->host,service);
+        LOGN(0,"unable to resolve host %s:%s",c->host,service);
         return -1;
     }
     c->hostResolved=1;
@@ -300,6 +330,8 @@ int post_http_send_line(influx_client_t *c, char *buf, int len)
     int sock=0, ret_code = 0;
     struct iovec iv[2];
     int charsReceived = 0;
+    struct addrinfo *ai;
+    int bytesExpected, bytesWritten;
 
     if(! c->hostResolved) {
         if (resolvHostname (c) != 0)
@@ -308,39 +340,67 @@ int post_http_send_line(influx_client_t *c, char *buf, int len)
 
     iv[1].iov_base = buf;
     iv[1].iov_len = len;
+    iv[0].iov_base = NULL;
 
-    //char *httpHeaderFormat="POST /write?db=%s&u=%s&p=%s HTTP/1.1\r\nHost: %s\r\nContent-Length: %zd\r\n\r\n";
-    char *httpHeaderFormat="POST /write?db=%s%s%s%s%s HTTP/1.1\r\nHost: %s\r\nContent-Length: %zd\r\n\r\n";
-    int neededHeaderSize = strlen(httpHeaderFormat);
-    if (c->usr) neededHeaderSize+=strlen(c->usr)+3;
-    if (c->pwd) neededHeaderSize+=strlen(c->pwd)+3;
-    if (! c->db) {
-        LOG(0,"post_http_send_line: no database name specified");
-        return -5;
-    }
-    neededHeaderSize+=strlen(c->db);
-    neededHeaderSize+=strlen(c->host);
-    iv[0].iov_base=malloc(neededHeaderSize + 5);  // a litte bit to much due to escape chars, 5=content length
-    if (iv[0].iov_base==NULL) return -2;
-    sprintf((char *)iv[0].iov_base, httpHeaderFormat,
+    if (c->org) {
+		// v2 api
+		char *httpHeaderFormat="POST /api/v2/write?org=%s&bucket=%s HTTP/1.1\r\nHost: %s\r\nContent-Length: %zd\r\nAuthorization: Token %s\r\n\r\n";
+		int neededHeaderSize = strlen(httpHeaderFormat);
+		neededHeaderSize+=strlen(c->org);
+		neededHeaderSize+=strlen(c->bucket);
+		neededHeaderSize+=strlen(c->token);
+		iv[0].iov_base=malloc(neededHeaderSize + 5);  // a litte bit to much due to escape chars, 5=content length
+		if (iv[0].iov_base==NULL) return -2;
+		sprintf((char *)iv[0].iov_base, httpHeaderFormat,c->org, c->bucket, c->host, iv[1].iov_len, c->token);
+
+    } else {
+		char *httpHeaderFormat="POST /write?db=%s%s%s%s%s HTTP/1.1\r\nHost: %s\r\nContent-Length: %zd\r\n\r\n";
+		int neededHeaderSize = strlen(httpHeaderFormat);
+		if (c->usr) neededHeaderSize+=strlen(c->usr)+3;
+		if (c->pwd) neededHeaderSize+=strlen(c->pwd)+3;
+		if (! c->db) {
+			LOGN(0,"post_http_send_line: no database name specified");
+			return -5;
+		}
+		neededHeaderSize+=strlen(c->db);
+		neededHeaderSize+=strlen(c->host);
+		iv[0].iov_base=malloc(neededHeaderSize + 5);  // a litte bit to much due to escape chars, 5=content length
+		if (iv[0].iov_base==NULL) return -2;
+		sprintf((char *)iv[0].iov_base, httpHeaderFormat,
             c->db, c->usr ? "&u=" : "",c->usr ? c->usr : "", c->pwd ? "&p=" : "", c->pwd ? c->pwd : "", c->host, iv[1].iov_len);
-    LOG(5,"httpHeader initialized (%s)",(char *)iv[0].iov_base);
+	}
+    LOG(2,"httpHeader initialized:\n---------------%s\n---------------\n",(char *)iv[0].iov_base);
 
     iv[0].iov_len = strlen((char *)iv[0].iov_base);
 
 	LOG(5, "influxdb-c::post_http: iv[1] = '%s'\n", (char *)iv[1].iov_base);
 
-    if((sock = socket(AF_INET, SOCK_STREAM, 0)) < 0) {
-        free(iv[1].iov_base);
-        free(iv[0].iov_base);
-        return -5;
-    }
 
-    if (connect(sock, c->ainfo->ai_addr, c->ainfo->ai_addrlen) < 0) {
-        c->hostResolved=0;      // make sure we resolv the host name the next time, ip may have been changed
-        ret_code = -6;
-        goto END;
-    }
+	ai = c->ainfo;
+	int connected = 0;
+
+	while (ai && connected==0) {
+		if((sock = socket(ai->ai_family, SOCK_STREAM,ai->ai_protocol)) < 0) {
+			//LOG(1,"socket to %s:%d failed (%d - %s)\n",c->host,c->port,errno,strerror(errno));
+			ai = ai->ai_next;
+		} else {
+			if (connect(sock, ai->ai_addr, ai->ai_addrlen) < 0) {
+				ret_code = -6;
+				ai = ai->ai_next;
+				close(sock);
+			} else {
+				connected++;
+			}
+		}
+	}
+
+	if (!connected) {
+		c->hostResolved=0;      // make sure we resolv the host name the next time, ip may have been changed
+		//free(iv[1].iov_base); iv[1].iov_base = NULL;
+		//free(iv[0].iov_base); iv[0].iov_base = NULL;
+		LOG(1,"connect to %s:%d failed (%d - %s)\n",c->host,c->port,errno,strerror(errno));
+		goto END;
+	}
 
 #ifndef WINDOWS
     // LINUX
@@ -354,7 +414,10 @@ int post_http_send_line(influx_client_t *c, char *buf, int len)
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&timeout, sizeof timeout);
 #endif
 
-    if(writev(sock, iv, 2) < (int)(iv[0].iov_len + iv[1].iov_len)) {
+    bytesExpected = (int)(iv[0].iov_len + iv[1].iov_len);
+    bytesWritten = writev(sock, iv, 2);
+    if(bytesWritten < bytesExpected) {
+        LOGN(0,"influx writev returned %d, expected at least %d, errno: %d %s",bytesWritten,bytesExpected,errno,strerror(errno));
         ret_code = -7;
         goto END;
     }
@@ -364,16 +427,16 @@ int post_http_send_line(influx_client_t *c, char *buf, int len)
     char recvBuf[RECV_BUF_LEN];
     memset(&recvBuf,0,RECV_BUF_LEN);
     int recLen = recv(sock,&recvBuf,RECV_BUF_LEN,0);
-    //LOG(0,"recLen:%d",recLen);
-    if (recLen <= 0) { LOG(0,"post_http_send_line: recv returned %d, errno=%d",recLen,errno); ret_code = -8; goto END; }
+    //LOGN(0,"recLen:%d",recLen);
+    if (recLen <= 0) { LOG(0,"post_http_send_line: recv returned %d, errno=%d\n",recLen,errno); ret_code = -8; goto END; }
 
     /*  RFC 2616 defines the Status-Line syntax as shown below:
 
         Status-Line = HTTP-Version SP Status-Code SP Reason-Phrase CRLF */
     char *p = &recvBuf[0];
-    if (strncmp(recvBuf,"HTTP/",5) != 0) { LOG(0,"post_http_send_line: response not starting with HTTP/ (%s)",recvBuf); ret_code = -20; goto END; }
+    if (strncmp(recvBuf,"HTTP/",5) != 0) { LOG(0,"post_http_send_line: response not starting with HTTP/ (%s)\n",recvBuf); ret_code = -20; goto END; }
 
-    while ((*p != '\0') && (*p != '\n') && (*p != ' ')) { p++; if (*p =='\0') { LOG(0,"post_http_send_line: end of string while searching for start of resonse code in '%s'",recvBuf); ret_code = -8; goto END; } }
+    while ((*p != '\0') && (*p != '\n') && (*p != ' ')) { p++; if (*p =='\0') { LOG(0,"post_http_send_line: end of string while searching for start of resonse code in '%s'\n",recvBuf); ret_code = -8; goto END; } }
 
     if (*p != ' ') { ret_code = -9; goto END; }
     p++; ret_code = 0;
@@ -384,14 +447,14 @@ int post_http_send_line(influx_client_t *c, char *buf, int len)
     }
 
     if ((ret_code / 100 != 2) && (ret_code != 0)) {
-        LOG(0,"post_http_send_line: received unexpected statusCode %d (%s)",ret_code,recvBuf);
-        LOG(0, "influxdb-c::post_http: iv[0] = '%s'\n", (char *)iv[0].iov_base);
-        LOG(0, "influxdb-c::post_http: iv[1] = '%s'\n", (char *)iv[1].iov_base);
+        LOGN(0,"post_http_send_line: received unexpected statusCode %d (%s)\n",ret_code,recvBuf);
+        LOGN(0, "influxdb-c::post_http: iv[0] = '%s'\n", (char *)iv[0].iov_base);
+        LOGN(0, "influxdb-c::post_http: iv[1] = '%s'\n", (char *)iv[1].iov_base);
     } else
     if (log_verbosity>1) {
-        LOG(1,"post_http_send_line: statusCode: %d, line: %s",ret_code,buf);
+        LOGN(1,"post_http_send_line: statusCode: %d, line: %s\n",ret_code,buf);
     } else
-        LOG(1,"post_http_send_line: statusCode: %d",ret_code);
+		if (ret_code != 204) LOGN(0,"post_http_send_line: statusCode: %d\n",ret_code);
 
     //goto END;
 
@@ -399,7 +462,7 @@ END:
     close(sock);
     free(iv[0].iov_base);
     //free(iv[1].iov_base);
-    if(ret_code < 0) LOG(1,"post_http_send_line: ret: %d, charsReceived: %d",ret_code,charsReceived);
+    if(ret_code < 0) LOGN(1,"post_http_send_line: ret: %d, charsReceived: %d",ret_code,charsReceived);
     return ret_code / 100 == 2 ? 0 : ret_code;
 }
 
@@ -421,13 +484,13 @@ int addToQueue (influx_client_t* c, char * line) {
             t2->next=t;
         }
         if (c->numEntriesQueued==0) {
-            LOG(0,"Beginning queueing of records due to failures posting to influxdb host");
+            LOGN(0,"Beginning queueing of records due to failures posting to influxdb host (max: %d)",c->maxNumEntriesToQueue);
         } else
-            LOG(1,"Due to failure sending data, record has been queued as #%d",c->numEntriesQueued);
+            LOGN(1,"Due to failure sending data, record has been queued as #%d",c->numEntriesQueued);
         c->numEntriesQueued++;
         return 0;
     } else {
-        LOG((c->maxNumEntriesToQueue>0),"Failed sending data and will not queue (numEntriesQueued(%d) < maxNumEntriesToQueue(%d), record lost", c->numEntriesQueued, c->maxNumEntriesToQueue);
+        LOGN((c->maxNumEntriesToQueue>0),"Failed sending data and will not queue (numEntriesQueued(%d) < maxNumEntriesToQueue(%d), record lost", c->numEntriesQueued, c->maxNumEntriesToQueue);
         return -2;
     }
 }
@@ -439,8 +502,9 @@ int influxdb_deQueue(influx_client_t *c) {
     struct influx_dataRow_t *t;
 
     if (c->numEntriesQueued) {
+        LOGN(0,"beginning dequeing, %d remaining",c->numEntriesQueued);
         do {
-            if (c->firstEntry) {}
+            //if (c->firstEntry) {}
             res = post_http_send_line(c, c->firstEntry->postData, strlen(c->firstEntry->postData));
             if (res == 0) {
                 t = c->firstEntry;
@@ -448,14 +512,17 @@ int influxdb_deQueue(influx_client_t *c) {
                 free(t->postData);
                 free(t);
                 numDequeued++; c->numEntriesQueued--;
-            } else
+                //LOGN(0,"dequeue first: success, remaining: %d",c->numEntriesQueued);
+            } else {
+                LOGN(0,"dequeue: post_http_send_line failed with %d",res);
                 return -1;
+            }
         } while((numDequeued < INFLUX_DEQUEUE_AT_ONCE) && (res == 0) && (c->numEntriesQueued));
         if (numDequeued>0) {
             char s[20];
             if (c->numEntriesQueued) sprintf(s,"%d left",c->numEntriesQueued);
             else strcpy(s,"=all");
-            LOG(0,"%d entr%s (%s) dequeued and successfully posted to influxdb host",numDequeued, numDequeued > 1 ? "ies" : "y", s);
+            LOGN(0,"%d entr%s (%s) dequeued and successfully posted to influxdb host",numDequeued, numDequeued > 1 ? "ies" : "y", s);
         }
     }
     return numDequeued;
@@ -495,7 +562,7 @@ int influxdb_post_http_line(influx_client_t* c, char * line)
     //printf("rc from post_http_send_line: %d\n",ret_code);
     if (ret_code != 0) {
         if (addToQueue(c,line)<0) {
-            free(line);
+            free(line);     // queue fill, must ignore this one
         }
     } else {
         free(line);
@@ -538,7 +605,7 @@ int res;
 struct timespec tp;
 
     res = clock_gettime(CLOCK_REALTIME, &tp);
-    if (res != 0) { LOG(0, "clock_gettime failed"); return 0; }
+    if (res != 0) { LOGN(0, "clock_gettime failed"); return 0; }
     //printf("sec:%ld nsec:%ld\n",tp.tv_sec,tp.tv_nsec);
     return (int64_t)(tp.tv_sec) * (int64_t)1000000000 + (int64_t)(tp.tv_nsec);
 }

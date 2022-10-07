@@ -22,7 +22,7 @@ extern "C" {
 
 /*
   Usage:
-    send_udp/post_http(c,
+    influxdb_post_http(c,
             INFLUX_MEAS("foo"),
             INFLUX_TAG("k", "v"), INFLUX_TAG("k2", "v2"),
             INFLUX_F_STR("s", "string"), INFLUX_F_FLT("f", 28.39, 2),
@@ -60,9 +60,12 @@ typedef struct _influx_client_t
 {
     char* host;
     int   port;
-    char* db;  // http only
-    char* usr; // http only [optional for auth]
-    char* pwd; // http only [optional for auth]
+    char* db;  // http only v1 api
+    char* usr; // http only [optional for auth] v1 api
+    char* pwd; // http only [optional for auth] v1 api
+    char* org; // organization v2 api
+    char *bucket; // v2 api
+    char *token;  // v2 api
     int maxNumEntriesToQueue;  // for buffer in case of send failures
     int numEntriesQueued;
     struct influx_dataRow_t* firstEntry;
@@ -70,7 +73,7 @@ typedef struct _influx_client_t
     struct addrinfo *ainfo;
 } influx_client_t;
 
-influx_client_t* influxdb_post_init (char* host, int port, char* db, char* user, char* pwd, int numQueueEntries);
+influx_client_t* influxdb_post_init (char* host, int port, char* db, char* user, char* pwd, char * org, char *bucket, char *token, int numQueueEntries);
 int influxdb_deQueue(influx_client_t *c);
 void influxdb_post_deInit(influx_client_t *c);
 
