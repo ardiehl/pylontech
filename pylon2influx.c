@@ -23,7 +23,7 @@
 #include "pylontechapi.h"
 #include "influxdb-post/influxdb-post.h"
 
-#define VER "1.03 Armin Diehl <ad@ardiehl.de> Dec 9,2021, compiled " __DATE__ " " __TIME__
+#define VER "1.04 Armin Diehl <ad@ardiehl.de> Mar 16,2023, compiled " __DATE__ " " __TIME__
 char * ME = "pylon2influx";
 
 

@@ -1,7 +1,7 @@
 /*
  * pylontechapi.c
  *
- * Copyright 2021 Armin Diehl <ad@ardiehl.de>
+ * Copyright 2021,2023 Armin Diehl <ad@ardiehl.de>
  *
  * Api for accessing Pylontech Batteries via RS485
  * Tested with US3000C but should also work with other models
@@ -23,6 +23,9 @@
  *
  * Dec 1, 2021 Armin:
     first version
+   Mar 16, 2023 Armin:
+    changed retry/reopen to reopen only after failed retries
+    default device changed to /dev/ttyUSB_pylontech
 */
 #include <stdio.h>
 #include <string.h>
