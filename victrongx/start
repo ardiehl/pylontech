@@ -7,8 +7,8 @@ logger "here is $0"
 /sbin/syslogd -R lnx.armin.d
 log "syslogd restarted"
 
-log "waiting 30 seconds for startup"
-sleep 30
+log "waiting 15 seconds for startup"
+sleep 15
 
 #### plyontech influxdb logger
 log "starting serstart"

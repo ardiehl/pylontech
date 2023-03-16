@@ -9,7 +9,7 @@
 
 . functions.sh
 
-LOCKTIMEOUT=100
+LOCKTIMEOUT=200
 
 checkReserved() {
 	local PROP
@@ -27,7 +27,7 @@ tryLock() {
     lock_tty $1
     [ $? -eq 0 ] && return 0
     echo -n "."
-    sleep 0.4
+    sleep 0.3
     let "TMO=TMO-1"
     [ $TMO == 0 ] && return 1
   done
@@ -39,6 +39,11 @@ if [ -z "$SERDEVS" ]; then
 	log "no serial ports found, giving up"
 	exit 1
 fi
+
+#ignore ttyUSB0 -> Carlogavazzi Meter
+SERDEVS=$(echo $SERDEVS | sed "s/ttyUSB0//g")
+
+
 #echo "SERDEVS: >$SERDEVS<"
 TEMP=$SERDEVS
 for P in $TEMP; do
@@ -58,35 +63,61 @@ fi
 # find the serial port for pylontech
 TEMP=$SERDEVS
 STARTED=0
-if ! findpid "./pylon2influx"; then
-	for P in $TEMP; do
-		log "Trying to obtain a lock for $P"
-		if tryLock $P; then
-			if [ $STARTED == 0 ]; then
-				log "$P locked, trying to detect pylontech battery"
+findpid "./pylon2influx" && STARTED=1
+for P in $TEMP; do
+	log "Trying to obtain a lock for $P"
+	if tryLock $P; then
+		log "$P locked"
+		if [ $STARTED == 0 ]; then
+			log "trying to detect pylontech battery on $P"
+			./pylon2influx -y --try -d /dev/$P
+			RES=$?
+			if [ $RES -ne 0 ]; then
 				./pylon2influx -y --try -d /dev/$P
-				RES=$?
-				if [ $RES -ne 0 ]; then
-					./pylon2influx -y --try -d /dev/$P
-					RES==$?
-				fi
-				if [ $RES == 0 ]; then
-					log "starting ./start_pylon2influx on /dev/$P"
-					SERDEVS=$(echo $SERDEVS | sed "s/$P//g")
-					./start_pylon2influx /dev/$P &
-					STARTED=1
-				fi
-				unlock_tty $P
-				log "$P unlocked"
+				RES==$?
 			fi
-		else
-			log "unable to get lock for $P, removing from available ports"
-			SERDEVS=$(echo $SERDEVS | sed "s/$P//g")
+			if [ $RES == 0 ]; then
+				log "starting ./start_pylon2influx on /dev/$P"
+				SERDEVS=$(echo $SERDEVS | sed "s/$P//g")
+				unlock_tty $P
+				./start_pylon2influx /dev/$P &
+				STARTED=1
+			fi
 		fi
-	done
-else
-	log "pylin2influx already running"
-fi
+	else
+		log "unable to get lock for $P, removing from available ports"
+		SERDEVS=$(echo $SERDEVS | sed "s/$P//g")
+	fi
+done
 
-log "remaining ports: $SERDEVS"
+log "remaining ports: $SERDEVS (locked)"
+
+EMTAGS=(emA emH)
+idx=0
+for i in $SERDEVS; do
+	if [ $idx -lt 2 ]; then
+		if ./em2influx --device=/dev/$i --tags=x --try; then
+			log "found energy meter on /dev/$i, unlocking"
+			[ -z $EMSERS ] || EMSERS="$EMSERS,"
+			EMSERS="$EMSERS/dev/$i"
+			[ -z $EMTAG ] || EMTAG="$EMTAG,"
+			EMTAG="$EMTAG${EMTAGS[$idx]}"
+			let "idx=idx+1"
+#			unlock_tty $i
+		else
+			unlock_tty $i
+			log "no energy meter detected on $i, unlocked"
+		fi
+	else
+		log "we have already detected 2 ports, unlocking $i"
+		unlock_tty $i
+	fi
+done
+CMD="./start_em2influx $EMSERS $EMTAG"
+log "starting $CMD"
+$CMD &
+
+# do not unlock the ports, as this script will be terminated
+# start_em2influx will detect stale locks and override them.
+# So the serialstarter has no chance to grab the port again
 

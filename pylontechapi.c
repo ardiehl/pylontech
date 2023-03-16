@@ -241,7 +241,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	// wait for SOI
 	int SOI=0;
 	while  (SOI == 0) {
-		res = UART_READ(pyl,p,1,18);
+		res = UART_READ(pyl,p,1,250);
 		if (res == 1) {
 			if (buf[0] != 0x7e) {
 				if (pyl->initialized) LOG(0,"packetReceive: received invalid SOI char (0x0%x)[%c], expected 0x7e\n",buf[0],buf[0]>' '?buf[0]:' ');
@@ -258,8 +258,8 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 				// send a few 0x0d in case some of the pylontech's are waiting for EOI
 				memset(&EOI_buf,0x0d,sizeof(EOI_buf));
 				res = uart_write_bytes(pyl->serFd,EOI_buf,sizeof(EOI_buf));	// uart_write_bytes waits until all chars are transmitted
-				res2 = uart_waiti(pyl->serFd,50);
-				LOG(0,"packetReceive: got no response, send %d 0x0d, checking for available data returned %d\n",res,res2);
+				res2 = uart_waiti(pyl->serFd,250);
+				LOG(1,"packetReceive: got no response, send %d 0x0d, checking for available data returned %d\n",res,res2);
 			}
 
 			return NULL;
@@ -268,7 +268,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	p++;
 
 	// get the fix part of the packet (including the length field
-	res = UART_READ(pyl, p,PKT_LEN_MIN-1,50);
+	res = UART_READ(pyl, p,PKT_LEN_MIN-1,250);
 	if (res != PKT_LEN_MIN-1) {
 		LOG(0,"packetReceive: got only %d bytes but expected %d bytes\n",res,PKT_LEN_MIN-1);
 		usleep(1000 * 50);
@@ -292,7 +292,7 @@ packetDataT * packetReceive (PYL_HandleT* pyl) {
 	infoLen = (length & 0x0fff);					// remove checksum from length field
 	len = infoLen + 4 + 1;							// info + checksum (16 bit) + EOI(0x0d)
 	p = strend(buf);
-	res = UART_READ(pyl,p,len,50);					// receive remaining @ end of string
+	res = UART_READ(pyl,p,len,250);					// receive remaining @ end of string
 	if (res != len) {
 		LOG(0,"packetReceive: got only %d bytes for the second part of a packet but expected %d bytes\n",res,len);
 		usleep(1000 * 50);
@@ -454,7 +454,7 @@ packetDataT * sendCommandAndReceive2 (
 	return pa;
 }
 
-#define RETRY_COUNT 2
+#define RETRY_COUNT 3
 // in case of error, close port, wait, reopen and try again once
 packetDataT * sendCommandAndReceive (
 				PYL_HandleT* pyl,
@@ -466,20 +466,24 @@ packetDataT * sendCommandAndReceive (
 	int retry = RETRY_COUNT;
 
 	while (retry) {
+		retry--;
 		pd = sendCommandAndReceive2 (pyl,CID2,dataHexAscii,expectedInfoLength);
 		//if (pd==NULL) printf("sendCommandAndReceive2 failed, initialized: %d\n",pyl->initialized);
 		if ((pd==NULL) && (pyl->initialized)) {
-			LOG(0,"sendCommandAndReceive: Closing and reopening %s due to communication errors\n",pyl->portname);
-			pyl_closeSerialPort(pyl);
-			usleep(1000*500);
-			rc = pyl_openSerialPort(pyl);
-			if (rc != 0) {
-				LOG(0,"sendCommandAndReceive: failed to reopen %s after failure\n",pyl->portname);
-				return pd;
+			if (retry == 1) {
+				LOG(0,"sendCommandAndReceive: Closing and reopening %s due to communication errors\n",pyl->portname);
+				pyl_closeSerialPort(pyl);
+				usleep(1000*500);
+				rc = pyl_openSerialPort(pyl);
+				if (rc != 0) {
+					LOG(0,"sendCommandAndReceive: failed to reopen %s after failure\n",pyl->portname);
+					return pd;
+				}
+			} else {
+				usleep(1000*50);	// delay after error
 			}
 		}
 		if (pd) return pd;
-		retry--;
 	}
 	return NULL;
 }

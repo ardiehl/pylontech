@@ -6,6 +6,7 @@
  * log data from pylontech batteries to influxdb
  *
  * Dec 2, 2021 Armin: initial version
+ * Dec 12,2021 Armin: added influxdb v2 api support
  *
  */
 
@@ -22,7 +23,7 @@
 #include "pylontechapi.h"
 #include "influxdb-post/influxdb-post.h"
 
-#define VER "0.01 Armin Diehl <ad@ardiehl.de> Dec 7,2021, compiled " __DATE__ " " __TIME__
+#define VER "1.03 Armin Diehl <ad@ardiehl.de> Dec 9,2021, compiled " __DATE__ " " __TIME__
 char * ME = "pylon2influx";
 
 
@@ -61,6 +62,9 @@ void usage(void) {
         "  -n, --db           database name\n" \
         "  -u, --user         influxdb user name\n" \
         "  -u, --password     influxdb password\n" \
+        "  -B, --bucket       influxdb v2 bucket\n" \
+        "  -O, --org          influxdb v2 org\n" \
+        "  -T, --token        influxdb v2 auth api token\n" \
         "  -c, --cache        #entries for influxdb cache (%d)\n" \
         "  -v, --verbose[=x]  increase verbose level\n" \
         "  -y, --syslog       log to syslog insead of stderr\n" \
@@ -87,10 +91,14 @@ int parseArgs (int argc, char **argv) {
 	char * serverName = NULL;
 	char * userName = NULL;
 	char * password = NULL;
+	char * bucket = NULL;
+	char * org = NULL;
+	char * token = NULL;
 	int syslog = 0;
 	int port = 8086;
 	int numQueueEntries = NUM_RECS_TO_BUFFER_ON_FAILURE;
 	int try=0;
+	int influxapi=1;
 
     static struct option long_options[] =
         {
@@ -103,6 +111,9 @@ int parseArgs (int argc, char **argv) {
                 {"db",          required_argument, 0, 'n'},
                 {"user",        required_argument, 0, 'u'},
                 {"password",    required_argument, 0, 'p'},
+                {"bucket",      required_argument, 0, 'B'},
+                {"org",         required_argument, 0, 'O'},
+                {"token",       required_argument, 0, 'T'},
                 {"port",        required_argument, 0, 'o'},
                 {"syslog",      no_argument      , 0, 'y'},
                 {"syslogtest",  no_argument      , 0, 'Y'},
@@ -113,7 +124,7 @@ int parseArgs (int argc, char **argv) {
                 {0, 0, 0, 0}
         };
 
-    while ((c = getopt_long (argc, argv, "hd:v::b:gs:n:u:p:o:yYetq:",long_options, &option_index)) != -1) {
+    while ((c = getopt_long (argc, argv, "hd:v::b:gs:n:u:p:o:yYetq:B:O:T:",long_options, &option_index)) != -1) {
         switch ((char)c) {
 			case 'v':
 				if (optarg) {
@@ -128,6 +139,9 @@ int parseArgs (int argc, char **argv) {
 			case 'n': dbName = strdup(optarg); break;
 			case 'u': userName = strdup(optarg); break;
 			case 'p': password = strdup(optarg); break;
+			case 'B': bucket = strdup(optarg); break;
+			case 'O': org = strdup(optarg); break;
+			case 'T': token = strdup(optarg); break;
 			case 't': try++; break;
             case 'h': usage(); break;
             case 'd': portname = strdup(optarg); break;
@@ -170,9 +184,22 @@ int parseArgs (int argc, char **argv) {
 
 	if (portname == NULL) portname = strdup(PYL_DEFPORTNAME);
 
+
+
 	if (try==0) {
-		if (dbName == NULL) { EPRINTF("database name not specified\n"); usage(); }
+		if (org || token || bucket) influxapi++;
 		if (serverName == NULL) { EPRINTF("influx server name not specified\n"); usage(); }
+		if (influxapi == 1) {
+			if (!dbName) { EPRINTF("influxdb database name not specified\n"); exit(1); }
+		} else {
+			if (!org) { EPRINTF("influxdb org not specified\n"); exit(1); }
+			if (!bucket) { EPRINTF("influxdb bucket not specified\n"); exit(1); }
+			if (!token) { EPRINTF("influxdb token not specified\n"); exit(1); }
+			//printf("api: %d org:'%s' bucket:'%s' token:'%s'\n",influxapi,org,bucket,token);
+			if (dbName) EPRINTF("Warning: database name ignored for influxdb v2 api\n");
+			if (userName) EPRINTF("Warning: user name ignored for influxdb v2 api\n");
+			if (password) EPRINTF("Warning: password ignored for influxdb v2 api\n");
+		}
 	}
 
 	// init pylontech api
@@ -199,7 +226,7 @@ int parseArgs (int argc, char **argv) {
 
 	PRINTF("%d devices found in group %d\n\n",pyl_numDevices(pyl),group);
 
-	iClient = influxdb_post_init (serverName, port, dbName, userName, password, numQueueEntries);
+	iClient = influxdb_post_init (serverName, port, dbName, userName, password, org, bucket, token, numQueueEntries);
 
     return 0;
 }
@@ -291,11 +318,11 @@ int analogDataChanged (PYL_AnalogDataT *a1, PYL_AnalogDataT *a2) {
 
 	int i;
 
-	if (abs(a1->voltage - a2->voltage) > 2) {
+	if (abs(a1->voltage - a2->voltage) > 10) {  // > 0,01 V
 		//printf("\nU %d %d\n",a1->voltage,a2->voltage);
 		return 1;  // 0,03V diff
 	}
-	if (abs(a1->current - a2->current) > 2) {
+	if (abs(a1->current - a2->current) > 2) {  // > 0,002V
 		//printf("\nI %d %d\n",a1->current,a2->current);
 		return 1;
 	}

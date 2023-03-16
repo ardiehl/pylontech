@@ -39,4 +39,4 @@ echo "OK, is locked"
 echo "starting $PROG"
 $PROG
 unlock_tty $SERDEV
-echo "$SERVEV unlocked"
+echo "$SERDEV unlocked"

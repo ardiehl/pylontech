@@ -253,7 +253,7 @@ void showSummary() {
 	kwh = (float)(totalCapacity-capacityNotUsable) * designVoltage / PYL_MODULE_CAPACITY_DIVIDER / 1000;
 	printf("\ntotal capacity %d AH (~ %.2f kWh, ~%.2f KWh per module)\n",(totalCapacity-capacityNotUsable)/PYL_MODULE_CAPACITY_DIVIDER, kwh, kwh / pyl_numDevices(pyl));
 	kwh = (float)(remainingCapacity-capacityNotUsable) * designVoltage / PYL_MODULE_CAPACITY_DIVIDER / 1000;
-	printf("\remaining capacity %d AH (~ %.2f kWh, ~%.2f KWh per module)\n",(remainingCapacity-capacityNotUsable)/PYL_MODULE_CAPACITY_DIVIDER, kwh, kwh / pyl_numDevices(pyl));
+	printf("remaining capacity %d AH (~ %.2f kWh, ~%.2f KWh per module)\n",(remainingCapacity-capacityNotUsable)/PYL_MODULE_CAPACITY_DIVIDER, kwh, kwh / pyl_numDevices(pyl));
 	printf("total current %.2f A (~ %.2f kW)\n",(float)totalCurrent / PYL_MODULE_CURRENT_DIVIDER, ((float)totalCurrent * designVoltage) / PYL_MODULE_CURRENT_DIVIDER/1000);
 
 }

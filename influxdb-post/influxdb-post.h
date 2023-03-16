@@ -76,6 +76,7 @@ typedef struct _influx_client_t
 influx_client_t* influxdb_post_init (char* host, int port, char* db, char* user, char* pwd, char * org, char *bucket, char *token, int numQueueEntries);
 int influxdb_deQueue(influx_client_t *c);
 void influxdb_post_deInit(influx_client_t *c);
+void influxdb_post_free(influx_client_t *c);
 
 
 uint64_t influxdb_getTimestamp();  // nanoseconds since 1970

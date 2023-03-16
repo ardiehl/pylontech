@@ -37,25 +37,32 @@ if [ -z "$SERDEV" ]; then
 fi
 
 # the data for the target influx database
-INFLUX_DATABASE=battery
+#INFLUX_DATABASE=ad
 INFLUX_SERVER=lnx.armin.d
 INFLUX_PORT=8086
-INFLUX_USER=
-INFLUX_PASSWORD=
+#INFLUX_USER=
+#INFLUX_PASSWORD=
+INFLUX_ORG=diehl
+INFLUX_TOKEN=uI3l7Xy7NmiUzrE3fY8TOHF7nwCNBA_zN20Gc2JNFUK-Ycc_BOs_4TjMeewpg_zXRQunR-rDKyktK5I84kOtKw==
+INFLUX_BUCKET=ad
 QUERY_INTERVAL_SECONDS=5
 # cache specifies the number of influx posts that will be queued in case
 # the influx server is not reachable
 CACHE=
 
-OPTS="--device=$SERDEV --server=$INFLUX_SERVER --port=$INFLUX_PORT --db=$INFLUX_DATABASE"
+OPTS="--device=$SERDEV --server=$INFLUX_SERVER --port=$INFLUX_PORT"
+[ -z "$INFLUX_DATABASE" ] || OPTS="$OPTS --db=$UNFLUX_DATABASE"
 [ -z "$INFLUX_USER" ] || OPTS="$OPTS --user=$UNFLUX_USER"
 [ -z "$INFLUX_PASSWORD" ] || OPTS="$OPTS --password=$UNFLUX_PASSWORD"
 [ -z "$CACHE" ] || OPTS="$OPTS --cache=$CACHE"
 [ -z "$QUERY_INTERVAL_SECONDS" ] || OPTS="$OPTS --query=$QUERY_INTERVAL_SECONDS"
+[ -z "$INFLUX_ORG" ] || OPTS="$OPTS --org=$INFLUX_ORG"
+[ -z "$INFLUX_TOKEN" ] || OPTS="$OPTS --token=$INFLUX_TOKEN"
+[ -z "$INFLUX_BUCKET" ] || OPTS="$OPTS --bucket=$INFLUX_BUCKET"
 
 tryLock() {
   while true; do
-    lock_tty $SERDEV
+    lock_tty $1
     [ $? -eq 0 ] && return 0
     echo -n "."
     sleep 0.5
@@ -68,7 +75,7 @@ unlockOnExit() {
 }
 
 log "Trying to lock $SERDEV"
-tryLock
+tryLock $SERDEV
 log "obtained a lock for $SERDEV, starting"
 
 trap unlockOnExit EXIT

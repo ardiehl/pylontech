@@ -7,7 +7,7 @@ GXHOSTNAME=vgx.armin.d
 GXUSER=root
 
 function c_pt() {
-	scp pylontech pylon2influx victrongx/functions.sh victrongx/serstart victrongx/lock victrongx/lsusbser victrongx/start victrongx/start_pylon2influx $GXUSER@$GXHOSTNAME:/data/home/root
+	scp pylontech pylon2influx victrongx/lslocks victrongx/functions.sh victrongx/serstart victrongx/lock victrongx/lsusbser victrongx/start victrongx/start_pylon2influx $GXUSER@$GXHOSTNAME:/data/home/root
 	scp victrongx/rc.local $GXUSER@$GXHOSTNAME:/data
 }
 

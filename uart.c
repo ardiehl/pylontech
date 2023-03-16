@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include "uart.h"
 #include <sys/select.h>
+#include <sys/ioctl.h>
 #include "log.h"
 
 //#define TCP
@@ -127,9 +128,15 @@ int initSerial (char * uart_port, int baud, struct termios * ti_save, struct ter
 #else
 	int baudFlag;
 	struct termios newtio;
+	int bits;
 
 	VPRINTF(3,"Opening %s | %d baud ",uart_port,baud); fflush(stdout);
-	serFd = open(uart_port, O_RDWR | O_NOCTTY );
+	//serFd = open(uart_port, O_RDWR | O_NOCTTY );
+#ifdef O_NONBLOCK
+	serFd = open(uart_port, O_RDWR | O_NOCTTY | O_NONBLOCK);
+#else
+	serFd = open(uart_port, O_RDWR | O_NOCTTY | O_NDELAY);
+#endif
 	VPRINTF(3, "Res:%d\n",serFd);
 	if (serFd <0) { return serFd; }
 
@@ -140,6 +147,7 @@ int initSerial (char * uart_port, int baud, struct termios * ti_save, struct ter
 	}
 
 	bzero(&newtio, sizeof(newtio));
+#if 0
 	baudFlag = B115200;
 	switch (baud) {
     	    case 1200: baudFlag = B1200; break;
@@ -165,8 +173,37 @@ int initSerial (char * uart_port, int baud, struct termios * ti_save, struct ter
 	//printf("%s (new): %s\n",uart_port,st);
 	//exit(1);
 	tcsetattr(serFd,TCSANOW,&newtio);
+#endif
+// set RTS
+	ioctl(serFd, TIOCMGET, &bits);
+	bits |= TIOCM_RTS;
+	ioctl(serFd, TIOCMSET, &bits);
 
+	tcgetattr(serFd, &newtio);
 
+	// set 8-N-1
+	newtio.c_iflag &= ~(IGNBRK | BRKINT | PARMRK | ISTRIP | INLCR | IGNCR | ICRNL | IXON);
+	newtio.c_oflag &= ~OPOST;
+	newtio.c_lflag &= ~(ECHO | ECHONL | ICANON | ISIG | IEXTEN);
+	newtio.c_cflag &= ~(CSIZE | PARENB | PARODD | CSTOPB);
+	newtio.c_cflag |= CS8;
+
+	// set speed
+	baudFlag = B115200;
+	switch (baud) {
+    	    case 1200: baudFlag = B1200; break;
+    	    case 1800: baudFlag = B1800; break;
+    	    case 2400: baudFlag = B2400; break;
+    	    case 4800: baudFlag = B4800; break;
+    	    case 9600: baudFlag = B9600; break;
+    	    case 19200: baudFlag = B19200; break;
+    	    case 38400: baudFlag = B38400; break;
+    	    case 57600: baudFlag = B57600; break;
+	}
+	cfsetispeed(&newtio, baudFlag);
+	cfsetospeed(&newtio, baudFlag);
+
+	tcsetattr(serFd, TCSANOW, &newtio);
 
 	if (ti) memmove(ti,&newtio,sizeof(newtio));
 
@@ -217,7 +254,7 @@ int uart_write_bytes(int serFd, char* src, size_t size) {
 	res = write (serFd, src, size);
 	VPRINTF(3,"uart_write_bytes: requested %d, wrote: %d bytes\n",size,res);
 #ifndef TCP
-	tcdrain(serFd);		// make sure all data has been sent
+	//tcdrain(serFd);		// make sure all data has been sent
 #endif // TCP
 	return res;
 }
@@ -242,7 +279,7 @@ int uart_read_bytes(int serFd,
 			}
 		}
 #else
-		uart_setCharsAndTimeout (serFd,ti, 0 , timeoutms);
+		uart_setCharsAndTimeout (serFd,ti, 0 , timeoutms / 10);
 #endif
 		VPRINTF(4,"uart_read_bytes, waiting to receive %d bytes, timeout=%d\n",maxLen,timeoutms);
 		res = read(serFd,buf,bytesRemaining);

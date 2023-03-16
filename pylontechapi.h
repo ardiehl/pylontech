@@ -54,7 +54,7 @@
 #include <termios.h>
 #include "log.h"
 
-#define PYL_DEFPORTNAME "/dev/ttyUSB1"
+#define PYL_DEFPORTNAME "/dev/ttyUSB_pylontech"
 #define PYL_DEFBAUDRATE 115200
 
 #define LI_BAT_DATA 0x46

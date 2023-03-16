@@ -13,26 +13,35 @@ all: default
 Debug: all
 cleanDebug: clean
 
+ARCH         = $(shell uname -m && mkdir -p obj-`uname -m`/influxdb-post)
+
 #LIBS = -lreadline
-SOURCES     = $(wildcard *.c influxdb-post/*.c)
-OBJECTS     = $(patsubst %.c, %.o, $(SOURCES))
-MAINOBJS    = $(patsubst %, %.o,$(TARGETS))
-LINKOBJECTS = $(filter-out $(MAINOBJS), $(OBJECTS))
-DEPS        = $(OBJECTS:.o=.d)
+OBJDIR       = obj-$(ARCH)$(TGT)
+SOURCES      = $(wildcard *.c *.cpp influxdb-post/*.c)
+#OBJECTS     = $(patsubst %.c, %.o, $(SOURCES))
+OBJECTS      = $(filter %.o, $(patsubst %.c, $(OBJDIR)/%.o, $(SOURCES)) $(patsubst %.cpp, $(OBJDIR)/%.o, $(SOURCES)))
+MAINOBJS     = $(patsubst %, $(OBJDIR)/%.o,$(TARGETS))
+LINKOBJECTS  = $(filter-out $(MAINOBJS), $(OBJECTS))
+DEPS         = $(OBJECTS:.o=.d)
 
 # include dependencies if they exist
 -include $(DEPS)
 
-%.o: %.c
+$(OBJDIR)/%.o: %.c
 	@echo -n "compiling $@ "
 	@$(CC) $(CFLAGS) -c $< -o $@
+	@echo ""
+
+$(OBJDIR)/%.o: %.cpp
+	@echo -n "compiling $< to $@ "
+	@$(CXX) $(CXXFLAGS) $(CPPFLAGS) -c $< -o $@
 	@echo ""
 
 .PRECIOUS: $(TARGETS) $(ALLOBJECTS)
 
 $(TARGETS): $(OBJECTS)
 	@echo -n "linking $@"
-	@$(CC) $@.o $(LINKOBJECTS) -Wall $(LIBS) -o $@
+	@$(CC) $(OBJDIR)/$@.o $(LINKOBJECTS) -Wall $(LIBS) -o $@
 	@echo ""
 
 build: clean all

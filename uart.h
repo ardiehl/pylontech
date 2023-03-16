@@ -6,7 +6,7 @@
 #define UART_OK 0
 #define UART_ERR -1
 
-//#define USE_SELECT
+#define USE_SELECT
 
 
 int uart_waiti(int serFd, int timeout_miliseconds);
