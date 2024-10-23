@@ -1,0 +1,14 @@
+[Unit]
+Description=%N
+After=network-online.target
+Requires=network-online.target
+
+#ad 22 oct 2024: changed query from 5s to 30s
+[Service]
+ExecStart=/usr/local/bin/%N --syslog --device=/dev/ttyUSB_pylontech --server=lnx.armin.d --org=diehl --token=uI3l7Xy7NmiUzrE3fY8TOHF7nwCNBA_zN20Gc2JNFUK-Ycc_BOs_4TjMeewpg_zXRQunR-rDKyktK5I84kOtKw== --bucket=ad --query=30
+Type=simple
+KillSignal=SIGTERM
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
