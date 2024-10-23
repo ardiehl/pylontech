@@ -1,5 +1,5 @@
 # Pylontech
-## API to query Pylontech Batteries as well as writing Battery data to InfluxDB (V1/V2)
+## API to query Pylontech Batteries as well as writing Battery data to InfluxDB (V1/V2) or other influxdb2 line protocol compatible software (e.g. telegraf or questdb)
 
 This code provides:
 - a library to read data from Pylontech Batteries (tested with UC3000)
@@ -27,27 +27,38 @@ Usage: pylontech [OPTION]...
 
 ## pylon2influx
 ```
-Usage: pylontech [OPTION]...
-  -h, --help         display help and exit
-  -d, --device       specify device (/dev/ttyUSB1)
-  -b, --baud         specify serial baudrate (115200)
-  -g, --group        Pylontech group address (0-15)
-  -s, --server       influxdb server name or ip
-  -p, --port         influxdb port (8086)
-  -n, --db           database name
-  -u, --user         influxdb user name
-  -u, --password     influxdb password
-  -B, --bucket       influxdb v2 bucket
-  -O, --org          influxdb v2 org
-  -T, --token        influxdb v2 auth api token
-  -c, --cache        #entries for influxdb cache (240)
-  -v, --verbose[=x]  increase verbose level
-  -y, --syslog       log to syslog insead of stderr
-  -Y, --syslogtest   send a testtext to syslog and exit
-  -e, --version      show version
-  -q, --query        query interval in seconds (5)
-  -t, --try          try to connect returns 0 on success
+Usage: pylon2influx [OPTION]...
+  -h, --help            display help and exit
+  -d, --device          specify device (/dev/ttyUSB_pylontech)
+  -b, --baud            specify serial baudrate (115200)
+  -g, --group           Pylontech group address (0-15)
+  -s, --server          influxdb server name or ip
+  -p, --port            influxdb port (8086)
+  -n, --db              database name
+  -u, --user            influxdb user name
+  -u, --password        influxdb password
+  -B, --bucket          influxdb v2 bucket
+  -O, --org             influxdb v2 org
+  -T, --token           influxdb v2 auth api token
+  -A, --influxapi       api string for influx, replaces db..token
+  -I, --isslverifypeer  0: do not check ssl certificate, 1=check
+  -c, --cache           #entries for influxdb cache (240)
+  -v, --verbose[=x]     increase verbose level
+  -y, --syslog          log to syslog insead of stderr
+  -Y, --syslogtest      send a testtext to syslog and exit
+  -e, --version         show version
+  -q, --query           query interval in seconds (5)
+  -t, --try             try to connect returns 0 on success
+
+The cache will be used in case the influxdb server is down. In
+that case data will be send when the server is reachable again.
 ```
+
+In case you are not using influxdb, the api path can be specified via --influxapi=, e.g.
+```
+--influxapi=/api/write?token=mytoken&request_timeout=100
+```
+ssl will be used if https:// is the prefix of the specified hostname.
 
 ## Pylontech API
 ```

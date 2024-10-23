@@ -7,7 +7,7 @@
  *
  * Dec 2, 2021 Armin: initial version
  * Dec 12,2021 Armin: added influxdb v2 api support
- *
+ * Oct 23,2024 Armin: Influx api string, use curl
  */
 
 #include <stdio.h>
@@ -23,7 +23,7 @@
 #include "pylontechapi.h"
 #include "influxdb-post/influxdb-post.h"
 
-#define VER "1.04 Armin Diehl <ad@ardiehl.de> Mar 16,2023, compiled " __DATE__ " " __TIME__
+#define VER "1.05 Armin Diehl <ad@ardiehl.de> Oct 23,2024 - compiled " __DATE__ " " __TIME__
 char * ME = "pylon2influx";
 
 
@@ -44,34 +44,30 @@ int queryIntervalSeconds = QUERY_INTERVAL_SECONDS;
 // buffer max 2 days
 #define NUM_RECS_TO_BUFFER_ON_FAILURE 2*24*60 / sendIntervalSeconds
 
-// maximal length of a http line send
-#define INFLUX_BUFLEN 2048
-
-char * influxBuf;
-size_t influxBufUsed;
-int influxBufLen;
 
 void usage(void) {
-        PRINTF("Usage: pylontech [OPTION]...\n" \
-        "  -h, --help         display help and exit\n" \
-        "  -d, --device       specify device (%s)\n" \
-        "  -b, --baud         specify serial baudrate (%d)\n" \
-        "  -g, --group        Pylontech group address (0-15)\n" \
-		"  -s, --server       influxdb server name or ip\n" \
-		"  -p, --port         influxdb port (8086)\n" \
-        "  -n, --db           database name\n" \
-        "  -u, --user         influxdb user name\n" \
-        "  -u, --password     influxdb password\n" \
-        "  -B, --bucket       influxdb v2 bucket\n" \
-        "  -O, --org          influxdb v2 org\n" \
-        "  -T, --token        influxdb v2 auth api token\n" \
-        "  -c, --cache        #entries for influxdb cache (%d)\n" \
-        "  -v, --verbose[=x]  increase verbose level\n" \
-        "  -y, --syslog       log to syslog insead of stderr\n" \
-        "  -Y, --syslogtest   send a testtext to syslog and exit\n" \
-        "  -e, --version      show version\n\n" \
-        "  -q, --query        query interval in seconds (%d)\n" \
-        "  -t, --try          try to connect returns 0 on success\n\n" \
+        PRINTF("Usage: pylon2influx [OPTION]...\n" \
+        "  -h, --help            display help and exit\n" \
+        "  -d, --device          specify device (%s)\n" \
+        "  -b, --baud            specify serial baudrate (%d)\n" \
+        "  -g, --group           Pylontech group address (0-15)\n" \
+		"  -s, --server          influxdb server name or ip\n" \
+		"  -p, --port            influxdb port (8086)\n" \
+        "  -n, --db              database name\n" \
+        "  -u, --user            influxdb user name\n" \
+        "  -u, --password        influxdb password\n" \
+        "  -B, --bucket          influxdb v2 bucket\n" \
+        "  -O, --org             influxdb v2 org\n" \
+        "  -T, --token           influxdb v2 auth api token\n" \
+		"  -A, --influxapi       api string for influx, replaces db..token\n" \
+        "  -I, --isslverifypeer  0: do not check ssl certificate, 1=check\n" \
+        "  -c, --cache           #entries for influxdb cache (%d)\n" \
+        "  -v, --verbose[=x]     increase verbose level\n" \
+        "  -y, --syslog          log to syslog insead of stderr\n" \
+        "  -Y, --syslogtest      send a testtext to syslog and exit\n" \
+        "  -e, --version         show version\n" \
+        "  -q, --query           query interval in seconds (%d)\n" \
+        "  -t, --try             try to connect returns 0 on success\n\n" \
         "The cache will be used in case the influxdb server is down. In\n" \
         "that case data will be send when the server is reachable again.\n"
         ,PYL_DEFPORTNAME,PYL_DEFBAUDRATE,NUM_RECS_TO_BUFFER_ON_FAILURE,QUERY_INTERVAL_SECONDS);
@@ -99,32 +95,36 @@ int parseArgs (int argc, char **argv) {
 	int numQueueEntries = NUM_RECS_TO_BUFFER_ON_FAILURE;
 	int try=0;
 	int influxapi=1;
+	char *influxApiStr = NULL;
+	int iVerifyPeer = 1;
 
     static struct option long_options[] =
         {
-                {"help",        no_argument,       0, 'h'},
-                {"device",      required_argument, 0, 'd'},
-                {"group",       required_argument, 0, 'g'},
-                {"verbose",     optional_argument, 0, 'v'},
-                {"baud",        required_argument, 0, 'b'},
-                {"server",      required_argument, 0, 's'},
-                {"db",          required_argument, 0, 'n'},
-                {"user",        required_argument, 0, 'u'},
-                {"password",    required_argument, 0, 'p'},
-                {"bucket",      required_argument, 0, 'B'},
-                {"org",         required_argument, 0, 'O'},
-                {"token",       required_argument, 0, 'T'},
-                {"port",        required_argument, 0, 'o'},
-                {"syslog",      no_argument      , 0, 'y'},
-                {"syslogtest",  no_argument      , 0, 'Y'},
-                {"version",     no_argument      , 0, 'e'},
-                {"try",         no_argument      , 0, 't'},
-                {"query",       required_argument, 0, 'q'},
+                {"help",        	no_argument,       0, 'h'},
+                {"device",      	required_argument, 0, 'd'},
+                {"group",       	required_argument, 0, 'g'},
+                {"verbose",     	optional_argument, 0, 'v'},
+                {"baud",        	required_argument, 0, 'b'},
+                {"server",      	required_argument, 0, 's'},
+                {"db",          	required_argument, 0, 'n'},
+                {"user",        	required_argument, 0, 'u'},
+                {"password",    	required_argument, 0, 'p'},
+                {"bucket",      	required_argument, 0, 'B'},
+                {"org",         	required_argument, 0, 'O'},
+                {"token",       	required_argument, 0, 'T'},
+                {"influxapi",   	required_argument, 0, 'A'},
+                {"isslverifypeer",	required_argument, 0, 'I'},
+                {"port",        	required_argument, 0, 'o'},
+                {"syslog",      	no_argument      , 0, 'y'},
+                {"syslogtest",  	no_argument      , 0, 'Y'},
+                {"version",     	no_argument      , 0, 'e'},
+                {"try",         	no_argument      , 0, 't'},
+                {"query",       	required_argument, 0, 'q'},
 
                 {0, 0, 0, 0}
         };
 
-    while ((c = getopt_long (argc, argv, "hd:v::b:gs:n:u:p:o:yYetq:B:O:T:",long_options, &option_index)) != -1) {
+    while ((c = getopt_long (argc, argv, "hd:v::b:gs:n:u:p:o:yYetq:B:O:T:A:I:",long_options, &option_index)) != -1) {
         switch ((char)c) {
 			case 'v':
 				if (optarg) {
@@ -142,6 +142,7 @@ int parseArgs (int argc, char **argv) {
 			case 'B': bucket = strdup(optarg); break;
 			case 'O': org = strdup(optarg); break;
 			case 'T': token = strdup(optarg); break;
+			case 'A': influxApiStr = strdup(optarg); break;
 			case 't': try++; break;
             case 'h': usage(); break;
             case 'd': portname = strdup(optarg); break;
@@ -155,6 +156,12 @@ int parseArgs (int argc, char **argv) {
 				port = strtol (optarg,NULL,10);
 				if ((errno) || (port < 0) || (port > 0xffff)) {
 					EPRINTF("Invalid port number\n"); usage();
+				}
+				break;
+			case 'I':
+				iVerifyPeer = strtol (optarg,NULL,10);
+				if ((errno) || (iVerifyPeer < 0) || (iVerifyPeer > 1)) {
+					EPRINTF("I or isslverifypeer: 0 or 1 required\n"); usage();
 				}
 				break;
 			case 'q':
@@ -186,21 +193,22 @@ int parseArgs (int argc, char **argv) {
 
 
 
-	if (try==0) {
-		if (org || token || bucket) influxapi++;
-		if (serverName == NULL) { EPRINTF("influx server name not specified\n"); usage(); }
-		if (influxapi == 1) {
-			if (!dbName) { EPRINTF("influxdb database name not specified\n"); exit(1); }
-		} else {
-			if (!org) { EPRINTF("influxdb org not specified\n"); exit(1); }
-			if (!bucket) { EPRINTF("influxdb bucket not specified\n"); exit(1); }
-			if (!token) { EPRINTF("influxdb token not specified\n"); exit(1); }
-			//printf("api: %d org:'%s' bucket:'%s' token:'%s'\n",influxapi,org,bucket,token);
-			if (dbName) EPRINTF("Warning: database name ignored for influxdb v2 api\n");
-			if (userName) EPRINTF("Warning: user name ignored for influxdb v2 api\n");
-			if (password) EPRINTF("Warning: password ignored for influxdb v2 api\n");
+	if (!influxApiStr)
+		if (try==0) {
+			if (org || token || bucket) influxapi++;
+			if (serverName == NULL) { EPRINTF("influx server name not specified\n"); usage(); }
+			if (influxapi == 1) {
+				if (!dbName) { EPRINTF("influxdb database name not specified\n"); exit(1); }
+			} else {
+				if (!org) { EPRINTF("influxdb org not specified\n"); exit(1); }
+				if (!bucket) { EPRINTF("influxdb bucket not specified\n"); exit(1); }
+				if (!token) { EPRINTF("influxdb token not specified\n"); exit(1); }
+				//printf("api: %d org:'%s' bucket:'%s' token:'%s'\n",influxapi,org,bucket,token);
+				if (dbName) EPRINTF("Warning: database name ignored for influxdb v2 api\n");
+				if (userName) EPRINTF("Warning: user name ignored for influxdb v2 api\n");
+				if (password) EPRINTF("Warning: password ignored for influxdb v2 api\n");
+			}
 		}
-	}
 
 	// init pylontech api
 	pyl = pyl_initHandle();
@@ -226,7 +234,7 @@ int parseArgs (int argc, char **argv) {
 
 	PRINTF("%d devices found in group %d\n\n",pyl_numDevices(pyl),group);
 
-	iClient = influxdb_post_init (serverName, port, dbName, userName, password, org, bucket, token, numQueueEntries);
+	iClient = influxdb_post_init (serverName, port, dbName, userName, password, org, bucket, token, numQueueEntries, influxApiStr, iVerifyPeer);
 
     return 0;
 }
@@ -241,6 +249,7 @@ int appendAnalogData(int adr, PYL_AnalogDataT * ad) {
 	SETNAME("%d",adr);
 	int i,designVoltage;
 	float remaining_kWh;
+	int rc;
 
 	if (ad->voltage <= 15) designVoltage = 12; /* FIXME */
 	else if (ad->voltage <= 30) designVoltage = 24;
@@ -250,7 +259,7 @@ int appendAnalogData(int adr, PYL_AnalogDataT * ad) {
 
 	remaining_kWh = (float)(ad->capacity-capacityNotUsableAH) * designVoltage / PYL_MODULE_CAPACITY_DIVIDER / 1000;
 
-	influxBufUsed = influxdb_format_line(&influxBuf, &influxBufLen, influxBufUsed,
+	rc = influxdb_format_line(iClient,
 		INFLUX_MEAS("Battery"),
 		INFLUX_TAG("Module", name),
 		INFLUX_F_FLT("i", (float)ad->current/PYL_MODULE_CURRENT_DIVIDER, 1),
@@ -258,19 +267,26 @@ int appendAnalogData(int adr, PYL_AnalogDataT * ad) {
 		INFLUX_F_INT("AH", ad->remainingCapacity),
 		INFLUX_F_FLT("kWH", remaining_kWh, 2),
 		INFLUX_END);
+
 	for (i=0;i<ad->cellsCount;i++) {
-		snprintf(name,NAMELEN,"u%d",i);		// cell voltage
-		influxBufUsed = influxdb_format_line(&influxBuf, &influxBufLen, influxBufUsed,	INFLUX_F_FLT(name, (float)ad->cellVoltage[i] / PYL_MODULE_VOLTAGE_DIVIDER, 3), INFLUX_END);
+		if (rc >= 0) {
+			snprintf(name,NAMELEN,"u%d",i);		// cell voltage
+			rc = influxdb_format_line(iClient, INFLUX_F_FLT(name, (float)ad->cellVoltage[i] / PYL_MODULE_VOLTAGE_DIVIDER, 3), INFLUX_END);
+		}
 	}
 	for (i=0;i<ad->tempCount;i++) {
-		if (i==0) SETNAME("%s","temp_bms"); else SETNAME("temp_%d",i);
-		influxBufUsed = influxdb_format_line(&influxBuf, &influxBufLen, influxBufUsed,	INFLUX_F_INT(name, ad->temp[i]), INFLUX_END);
+		if (rc >= 0) {
+			if (i==0) SETNAME("%s","temp_bms"); else SETNAME("temp_%d",i);
+			rc = influxdb_format_line(iClient, INFLUX_F_INT(name, ad->temp[i]), INFLUX_END);
+		}
 	}
 
-	influxBufUsed = influxdb_format_line(&influxBuf, &influxBufLen, influxBufUsed,
+	if (rc >= 0)
+	  rc = influxdb_format_line(iClient,
 		INFLUX_F_INT("CycleCount", ad->cycleCount),
 		INFLUX_TS(timestamp), INFLUX_END);
 
+	if (rc < 0) { EPRINTFN("influxdb_format_line failed"); return 1; }
 	//printf("%s\n\nlen: %d used: %zu\n",influxBuf,influxBufLen,influxBufUsed);
 
 	return 0;
@@ -374,8 +390,8 @@ void mainloop() {
 				ad[deviceNo].infoflag = 0;
 				ad[deviceNo].commandValue = 0;					// ignore these ones
 				if (analogDataChanged (&ad[deviceNo],&adSent[deviceNo])) {
-					appendAnalogData(deviceNo+1,&ad[deviceNo]);
-					if (influxBuf == NULL) {
+					rc = appendAnalogData(deviceNo+1,&ad[deviceNo]);
+					if (rc != 0) {
 						LOG(0,"appendAnalogData failed for device %d, entriesAdded: %d\n",deviceNo,entriesAdded);
 						break;
 					} else entriesAdded++;
@@ -400,8 +416,7 @@ void mainloop() {
 		if (entriesAdded) {
 			//printf("would send:\n%s\n",influxBuf);
 			//free(influxBuf); influxBuf = NULL;  // influx post would free
-			rc = influxdb_post_http_line(iClient, influxBuf);
-			influxBuf = NULL;
+			rc = influxdb_post_http_line(iClient);
 			if (rc != 0) {
 				LOG(0,"influxdb_post_http_line returned %d\n",rc);
 				errs_http++;

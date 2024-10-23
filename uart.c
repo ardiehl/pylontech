@@ -41,7 +41,7 @@ int uart_waiti(int serFd, int timeout_miliseconds) {
 	timeout.tv_usec = timeout_miliseconds*1000;
 	res = select(serFd+1, &set, NULL, NULL, &timeout);
 	VPRINTF(3,"uart_waiti: select with tv_usec=%ld returned %d\n",timeout.tv_usec,res);
-	if (res <= 0) return res;
+	if (res <= 0) return UART_ERR;
 	return UART_OK;
 }
 
@@ -283,7 +283,7 @@ int uart_read_bytes(int serFd,
 #endif
 		VPRINTF(4,"uart_read_bytes, waiting to receive %d bytes, timeout=%d\n",maxLen,timeoutms);
 		res = read(serFd,buf,bytesRemaining);
-		if (res <= 0) return 0;
+		if (res < 0) return 0;
 		buf+=res; bytesRemaining-=res; bytesReceived+=res;
 		VPRINTF(3,"uart_read_bytes: received %d bytes, remaining %d\n",res,bytesRemaining);
 

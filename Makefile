@@ -15,13 +15,15 @@ cleanDebug: clean
 
 ARCH         = $(shell uname -m && mkdir -p obj-`uname -m`/influxdb-post)
 
-#LIBS = -lreadline
-OBJDIR       = obj-$(ARCH)$(TGT)
-SOURCES      = $(wildcard *.c *.cpp influxdb-post/*.c)
-#OBJECTS     = $(patsubst %.c, %.o, $(SOURCES))
-OBJECTS      = $(filter %.o, $(patsubst %.c, $(OBJDIR)/%.o, $(SOURCES)) $(patsubst %.cpp, $(OBJDIR)/%.o, $(SOURCES)))
-MAINOBJS     = $(patsubst %, $(OBJDIR)/%.o,$(TARGETS))
-LINKOBJECTS  = $(filter-out $(MAINOBJS), $(OBJECTS))
+LIBS = -lcurl
+OBJDIR            = obj-$(ARCH)$(TGT)
+SOURCES           = $(wildcard *.c *.cpp)
+SOURCESINFLUX     = $(wildcard *.c *.cpp influxdb-post/*.c)
+OBJECTS           = $(filter %.o, $(patsubst %.c, $(OBJDIR)/%.o, $(SOURCES)) $(patsubst %.cpp, $(OBJDIR)/%.o, $(SOURCES)))
+OBJECTSINFLUX     = $(filter %.o, $(patsubst %.c, $(OBJDIR)/%.o, $(SOURCESINFLUX)) $(patsubst %.cpp, $(OBJDIR)/%.o, $(SOURCES)))
+MAINOBJS          = $(patsubst %, $(OBJDIR)/%.o,$(TARGETS))
+LINKOBJECTS       = $(filter-out $(MAINOBJS), $(OBJECTS))
+LINKOBJECTSINFLUX = $(filter-out $(MAINOBJS), $(OBJECTSINFLUX))
 DEPS         = $(OBJECTS:.o=.d)
 
 # include dependencies if they exist
@@ -39,9 +41,16 @@ $(OBJDIR)/%.o: %.cpp
 
 .PRECIOUS: $(TARGETS) $(ALLOBJECTS)
 
-$(TARGETS): $(OBJECTS)
+
+pylontech: $(OBJECTS)
 	@echo -n "linking $@"
-	@$(CC) $(OBJDIR)/$@.o $(LINKOBJECTS) -Wall $(LIBS) -o $@
+	@$(CC) $(OBJDIR)/$@.o $(LINKOBJECTS) -Wall -o $@
+	@echo ""
+
+
+pylon2influx: $(OBJECTSINFLUX)
+	@echo -n "linking $@"
+	@$(CC) $(OBJDIR)/$@.o $(LINKOBJECTSINFLUX) -Wall $(LIBS) -o $@
 	@echo ""
 
 build: clean all
@@ -52,12 +61,15 @@ clean:
 	-rm -f $(DEPS)
 
 info:
-	@echo "    TARGETS: $(TARGETS)"
-	@echo "    SOURCES: $(SOURCES)"
-	@echo "    OBJECTS: $(OBJECTS)"
-	@echo "LINKOBJECTS: $(LINKOBJECTS)"
-	@echo "   MAINOBJS: $(MAINOBJS)"
-	@echo "       DEPS: $(DEPS)"
-	@echo "         CC: $(CC)"
-	@echo "     CFLAGS: $(CFLAGS)"
-	@echo "       LIBS: $(LIBS)"
+	@echo "          TARGETS: $(TARGETS)"
+	@echo "          SOURCES: $(SOURCES)"
+	@echo "    SOURCESINFLUX: $(SOURCESINFLUX)"
+	@echo "          OBJECTS: $(OBJECTS)"
+	@echo "    OBJECTSINFLUX: $(OBJECTSINFLUX)"
+	@echo "      LINKOBJECTS: $(LINKOBJECTS)"
+	@echo "LINKOBJECTSINFLUX: $(LINKOBJECTSINFLUX)"
+	@echo "         MAINOBJS: $(MAINOBJS)"
+	@echo "             DEPS: $(DEPS)"
+	@echo "               CC: $(CC)"
+	@echo "           CFLAGS: $(CFLAGS)"
+	@echo "             LIBS: $(LIBS)"

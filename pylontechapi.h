@@ -51,6 +51,10 @@
 #ifndef PYLONTECH_H_INCLUDED
 #define PYLONTECH_H_INCLUDED
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include <termios.h>
 #include "log.h"
 
@@ -191,6 +195,9 @@ int pyl_getSerialNumber (PYL_HandleT* pyl, PYL_SerialNumberT *mi);
 int pyl_getAlarmInfo (PYL_HandleT* pyl, PYL_AlarmInfoT *ai);
 int pyl_getChargeDischargeInfo (PYL_HandleT* pyl, PYL_ChargeDischargeInfoT *cd);
 
+#ifdef __cplusplus
+}
+#endif
 
 #endif // PYLONTECH_H_INCLUDED
 
