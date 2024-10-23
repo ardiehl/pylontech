@@ -125,12 +125,13 @@ int parseArgs (int argc, char **argv) {
         };
 
     while ((c = getopt_long (argc, argv, "hd:v::b:gs:n:u:p:o:yYetq:B:O:T:A:I:",long_options, &option_index)) != -1) {
+		errno=0;
         switch ((char)c) {
 			case 'v':
 				if (optarg) {
 					res = strtol (optarg,NULL,10);
 					if (errno) {
-						EPRINTF("verbosity is not a number\n"); usage();
+						EPRINTF("verbosity (%s) is not a number\n",optarg); usage();
 					}
 					log_setVerboseLevel(res);
 				} else log_incVerboseLevel();
@@ -159,6 +160,7 @@ int parseArgs (int argc, char **argv) {
 				}
 				break;
 			case 'I':
+				errno=0;
 				iVerifyPeer = strtol (optarg,NULL,10);
 				if ((errno) || (iVerifyPeer < 0) || (iVerifyPeer > 1)) {
 					EPRINTF("I or isslverifypeer: 0 or 1 required\n"); usage();
@@ -167,7 +169,7 @@ int parseArgs (int argc, char **argv) {
 			case 'q':
 				queryIntervalSeconds = strtol (optarg,NULL,10);
 				if ((errno) || (queryIntervalSeconds < 1)) {
-					EPRINTF("query interval: invalid number\n"); usage();
+					EPRINTF("query interval: invalid number (%s)\n",optarg); usage();
 				}
 				break;
             case 'b':
@@ -377,7 +379,7 @@ void mainloop() {
 	int numDvices = pyl_numDevices(pyl);
 	memset(&ad,0,sizeof(ad)); memset(&adSent,0,sizeof(adSent));
 
-	LOG(0,"mainloop started (%s %s)",ME,VER);
+	LOGN(0,"mainloop started (%s %s)",ME,VER);
 
 	while(mainloopDone == 0) {
 		timestamp = influxdb_getTimestamp();
@@ -423,6 +425,7 @@ void mainloop() {
 			} else {
 				memmove(&adSent,&ad,sizeof(ad));
 				http_sendCount++;
+				VPRINTFN(1,"Post to influxdb: success");
 			}
 		}
 		sleep(queryIntervalSeconds);
