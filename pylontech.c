@@ -58,9 +58,9 @@ void showAnalogData(PYL_HandleT* pyl) {
 		printf("       pack capacity: %d\n",pd.capacity);
 		printf("  remaining capacity: %d\n",pd.remainingCapacity);
 		printf("         cycle count: %d\n",pd.cycleCount);
+		exit(1);
 
 	} else printf("failed to read analog values from device %d, rc:%d\n",pyl->adr,res);
-
 }
 
 
@@ -314,7 +314,7 @@ int main (int argc, char **argv) {
                 {0, 0, 0, 0}
         };
 
-    while ((c = getopt_long (argc, argv, "hd:v::b:a:ymSPslcg",long_options, &option_index)) != -1) {
+    while ((c = getopt_long (argc, argv, "hd:v::b:a:ymSPslcg:",long_options, &option_index)) != -1) {
         switch ((char)c) {
 			case 'v':
 				if (optarg) {

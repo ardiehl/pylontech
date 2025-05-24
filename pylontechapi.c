@@ -493,6 +493,21 @@ packetDataT * sendCommandAndReceive (
 
 
 int pyl_getProtocolVersion (PYL_HandleT* pyl) {
+/*
+	for (int i=0;i<0xff;i++) {
+		pyl->protocolVersion = i;
+		printf("Trying 0x%02x\n",i);
+		packetDataT * pa = sendCommandAndReceive (pyl,CID2_GetCommunicationProtocolVersion, NULL, 0);
+		if (pa) {
+			printf("getProtocolVersion 0x%02x: got response, version is 0x%02x\n",pa->ver);
+			free(pa);
+		} else {
+			printf("no response\n");
+		}
+	}
+	exit (1);
+*/
+//	pyl->protocolVersion = 0x21; // test for jk-bms
 	packetDataT * pa = sendCommandAndReceive (pyl,CID2_GetCommunicationProtocolVersion, NULL, 0);
 	if (!pa) return PYL_ERR;
 

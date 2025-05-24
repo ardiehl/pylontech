@@ -40,7 +40,7 @@ int uart_waiti(int serFd, int timeout_miliseconds) {
 	timeout.tv_sec = 0;
 	timeout.tv_usec = timeout_miliseconds*1000;
 	res = select(serFd+1, &set, NULL, NULL, &timeout);
-	VPRINTF(3,"uart_waiti: select with tv_usec=%ld returned %d\n",timeout.tv_usec,res);
+	VPRINTF(3,"uart_waiti: select with tv_usec=%ld returned %d\n",timeout_miliseconds*1000,res);
 	if (res <= 0) return UART_ERR;
 	return UART_OK;
 }
